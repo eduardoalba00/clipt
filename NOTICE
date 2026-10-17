@@ -1,0 +1,20 @@
+Clipt
+Copyright (c) 2026 Eduardo Alba. Released under the MIT License (see LICENSE).
+
+This product includes material adapted from the following projects.
+
+MonoCode (MIT License, Copyright (c) 2026 Nick)
+  - Theme tokens and their light/dark derivation (src/styles/index.css)
+  - Popover, modal, shimmer text, colour picker, secondary button and the icon
+    wrapper (src/components/ui/)
+  - The macOS window chrome: pinned traffic lights, the stretched title bar,
+    and the native glass (transparent NSWindow tint, WindowServer background
+    blur, NSVisualEffectView backing) (src-tauri/src/macos.rs)
+
+Hugeicons free icons (MIT License, Copyright (c) 2025 Hugeicons)
+  - Interface icons, via @hugeicons/core-free-icons and @hugeicons/react
+
+Cap (https://github.com/CapSoftware/cap) was read as a reference for how
+ScreenCaptureKit recording works on macOS. No code from Cap is included.
+
+Dependencies keep their own licenses; see Cargo.lock and package-lock.json.

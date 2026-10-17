@@ -1,0 +1,262 @@
+@import "tailwindcss";
+
+/* Theme tokens follow MonoCode (MIT): one hue/saturation/lightness set, with
+   light and dark derived from it. */
+
+@custom-variant dark (&:where(html:not(.theme-light), html:not(.theme-light) *));
+
+@theme {
+  --leading-label: 1.4;
+  --color-background-base: hsl(
+    var(--theme-hue) var(--theme-saturation) var(--background-lightness)
+  );
+  --color-content: hsl(
+    var(--theme-hue) var(--theme-saturation) var(--content-lightness)
+  );
+  /* Structural separators: border-stroke, divide-stroke, bg-stroke. */
+  --color-stroke: color-mix(in srgb, var(--color-content) 7%, transparent);
+  --color-selection-subtle: color-mix(
+    in srgb,
+    var(--color-content) var(--selection-subtle-strength),
+    transparent
+  );
+  --color-selection: color-mix(
+    in srgb,
+    var(--color-content) var(--selection-strength),
+    transparent
+  );
+  --color-selection-strong: color-mix(
+    in srgb,
+    var(--color-content) var(--selection-strong-strength),
+    transparent
+  );
+  --color-selection-hover: color-mix(
+    in srgb,
+    var(--color-content) var(--selection-hover-strength),
+    transparent
+  );
+  --color-selection-emphasis: color-mix(
+    in srgb,
+    var(--color-content) var(--selection-emphasis-strength),
+    transparent
+  );
+  --color-accent: hsl(211 92% 62%);
+  --color-record: #ff5f57;
+  --color-warning: #f5b84a;
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+}
+
+:root {
+  --motion-feedback-duration: 120ms;
+  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --theme-hue: 240;
+  --theme-saturation: 0%;
+  --theme-dark-lightness: 9%;
+  --selection-subtle-strength: 8%;
+  --selection-strength: 10%;
+  --selection-strong-strength: 12%;
+  --selection-hover-strength: 15%;
+  --selection-emphasis-strength: 20%;
+  --background-lightness: var(--theme-dark-lightness);
+  --content-lightness: 92%;
+}
+
+html {
+  color-scheme: dark;
+}
+
+html.theme-light {
+  --background-lightness: 97%;
+  --content-lightness: 18%;
+  --selection-subtle-strength: 5%;
+  --selection-strength: 6%;
+  --selection-strong-strength: 7%;
+  --selection-hover-strength: 10%;
+  --selection-emphasis-strength: 14%;
+  --color-warning: #b7791f;
+  color-scheme: light;
+}
+
+/* The window paints the base colour (glass in dark mode, opaque in light).
+   The page stays clear so the native preview shows through its hole. */
+html,
+body,
+#root {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  background: transparent;
+  color: var(--color-content);
+  font-family: var(--font-sans);
+  line-height: 1.4;
+  overflow: hidden;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Body text size; the root stays 16px so Tailwind's rem spacing is exact. */
+body {
+  font-size: 13px;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+button {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The inspector: a touch more tint than the body, like MonoCode's sidebar. */
+.sidebar-glass {
+  background: color-mix(in srgb, var(--color-background-base) 35%, transparent);
+}
+
+html.theme-light .sidebar-glass {
+  background: color-mix(in srgb, var(--color-content) 2.5%, transparent);
+}
+
+/* Popover glass. */
+.popover-backdrop {
+  background: color-mix(in srgb, var(--color-background-base) 72%, transparent);
+}
+
+html.theme-light .popover-backdrop {
+  background: var(--color-background-base);
+}
+
+@keyframes popover-open {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translate(var(--popover-shift, 0), var(--popover-lift, 0))
+      scale(0.96);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}
+
+.popover-open {
+  animation: popover-open 170ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.popover-open[data-popover-side="bottom"] {
+  --popover-lift: -6px;
+}
+
+.popover-open[data-popover-side="top"] {
+  --popover-lift: 6px;
+}
+
+.popover-open[data-popover-side="left"] {
+  --popover-shift: 6px;
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-panel-in {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.modal-backdrop {
+  animation: modal-backdrop-in 160ms ease-out both;
+}
+
+.modal-panel {
+  animation: modal-panel-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* "Exporting · 42%": working states are shimmer text, not spinners. */
+.shimmer-text {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent calc(50% - var(--spread)),
+      var(--color-content) 50%,
+      transparent calc(50% + var(--spread))
+    ),
+    linear-gradient(
+      color-mix(in srgb, var(--color-content) 45%, transparent),
+      color-mix(in srgb, var(--color-content) 45%, transparent)
+    );
+  background-size:
+    250% 100%,
+    auto;
+  background-repeat: no-repeat, padding-box;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: shimmer-text var(--shimmer-duration, 2s) linear infinite;
+}
+
+@keyframes shimmer-text {
+  from {
+    background-position: 100% center;
+  }
+  to {
+    background-position: 0% center;
+  }
+}
+
+/* Recording pulse on the launcher's record dot. */
+@keyframes record-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.record-pulse {
+  animation: record-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover-open,
+  .modal-backdrop,
+  .modal-panel,
+  .record-pulse {
+    animation: none;
+  }
+
+  .shimmer-text {
+    animation: none;
+    background-image: none;
+    color: color-mix(in srgb, var(--color-content) 70%, transparent);
+  }
+}

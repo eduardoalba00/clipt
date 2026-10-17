@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Clipt records your voice when the mic is on.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Clipt records your camera when the camera is on.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Clipt records the screen, window or area you choose.</string>
+</dict>
+</plist>
