@@ -3,11 +3,11 @@
 @source "../../src";
 
 html {
-  background: #05060d;
+  background: #1e0614;
 }
 
 .desktop {
-  background-color: #05060d;
+  background-color: #1e0614;
   background-image: image-set(url("/wallpaper-1600.webp") 1x, url("/wallpaper.webp") 2x);
   background-position: center;
   background-size: cover;

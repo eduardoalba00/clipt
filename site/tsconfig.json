@@ -16,7 +16,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": {
       "@tauri-apps/api/core": ["./src/shims/tauri-core.ts"],
       "react": ["./node_modules/@types/react"],
