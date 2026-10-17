@@ -38,3 +38,25 @@ jobs:
       - name: Tests
         working-directory: src-tauri
         run: cargo test
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            site/package-lock.json
+
+      # The site renders the app's components, so it typechecks against the app's deps too.
+      - run: npm ci
+      - run: npm ci
+        working-directory: site
+      - run: npm run typecheck
+        working-directory: site
+      - run: npm run build
+        working-directory: site

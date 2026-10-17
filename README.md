@@ -94,6 +94,15 @@ open src-tauri/target/release/bundle/macos/Clipt.app
 Open the bundled `Clipt.app`, not the bare binary from a terminal: macOS
 grants Screen Recording to whichever app launched the process.
 
+For one build that runs on both Apple Silicon and Intel Macs:
+
+```sh
+rustup target add x86_64-apple-darwin
+npm run tauri build -- --target universal-apple-darwin
+```
+
+It lands in `src-tauri/target/universal-apple-darwin/release/bundle/`.
+
 Unsigned builds get a new signature every time, and macOS then forgets their
 permissions. To keep them across rebuilds, give Clipt a stable identity once:
 

@@ -60,6 +60,10 @@ code signature. For a permission that survives rebuilds, run
 - **Ask before adding a dependency.** Clipt stays small by keeping its
   dependency list short.
 - **Respect reduced motion.** Animations explain changes; they never block.
+- **The website renders the app.** `site/` (useclipt.dev) imports Clipt's
+  real components and swaps the Tauri bridge for an in-browser stand-in. If
+  you change the `Scene` or an IPC call, keep `site/src/backend` in step; see
+  [site/README.md](site/README.md).
 
 ## Code of Conduct
 
