@@ -1,5 +1,5 @@
 //! Takes: raw recordings (or imported files) kept in Clipt's own working
-//! folder, `~/Library/Application Support/com.clipt.desktop/takes/<id>/`.
+//! folder, `~/Library/Application Support/dev.useclipt.clipt/takes/<id>/`.
 //! Edits are a recipe stored next to the take; an MP4 only exists once the
 //! take is exported.
 
