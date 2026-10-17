@@ -99,6 +99,51 @@ fn exports_1080p30_h264_aac() {
 }
 
 #[test]
+fn picture_background_covers_the_canvas() {
+    let d = dir("picture");
+    let clip = d.join("clip.mov");
+    common::make_clip(&clip, 1280, 800, 30, 0.5, false);
+    // A 400x100 picture: left half red, right half blue. Covering a 1:1
+    // canvas crops its sides, so the visible corners are red then blue.
+    let mut bgra = Vec::new();
+    for _y in 0..100 {
+        for x in 0..400 {
+            bgra.extend_from_slice(if x < 200 {
+                &[40, 40, 230, 255]
+            } else {
+                &[230, 60, 40, 255]
+            });
+        }
+    }
+    let picture = d.join("bg.bmp");
+    common::Frame {
+        width: 400,
+        height: 100,
+        bgra,
+    }
+    .write_bmp(&picture);
+
+    let mut r = recipe(Aspect::Square, 30, (0.0, 0.5));
+    r.style.background = Background::Image {
+        path: picture.to_string_lossy().into_owned(),
+    };
+    let out = d.join("out.mp4");
+    export(&clip, &out, &r);
+    let frame = common::file_frame(&out, 0.2);
+    let [r0, g0, b0] = frame.pixel(6, 6);
+    assert!(
+        r0 > 180 && g0 < 90 && b0 < 90,
+        "left is red: {r0} {g0} {b0}"
+    );
+    let [r1, g1, b1] = frame.pixel(1073, 6);
+    assert!(
+        b1 > 180 && r1 < 90 && g1 < 100,
+        "right is blue: {r1} {g1} {b1}"
+    );
+    std::fs::remove_dir_all(&d).unwrap();
+}
+
+#[test]
 fn exports_square_60fps_without_audio() {
     let d = dir("square");
     let clip = d.join("clip.mov");
@@ -216,6 +261,56 @@ fn demo() {
                 }
                 n += 1;
             }
+        }
+    }
+}
+
+/// How much the export encoder loses on screen text:
+/// `cargo test --release --test export quality -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn quality() {
+    let d = dir("quality");
+    for (name, paint) in [
+        ("scrolling", common::text as common::Paint),
+        ("still", common::text_still),
+    ] {
+        println!("-- {name} text");
+        let clip = d.join("text.mov");
+        common::make_painted(&clip, 2880, 1800, 30, 1.0, false, paint);
+        let media = clipt_lib::media::open(&clip, None).unwrap();
+        for (aspect, pad, fps) in [(Aspect::Wide, 0.45, 30), (Aspect::Wide, 0.45, 60)] {
+            let mut r = recipe(aspect, fps, (0.0, 1.0));
+            r.style.padding = pad;
+            let scene = Scene::build(&r, &media.source);
+            let range = unsafe {
+                objc2_core_media::CMTimeRange::new(
+                    clipt_lib::objc::time(0.5),
+                    clipt_lib::objc::time(0.3),
+                )
+            };
+            let (reader, output) =
+                clipt_lib::export::frame_reader(&media, scene.clone(), range).unwrap();
+            assert!(unsafe { reader.startReading() });
+            let reference = common::nearest(&output, 0.5);
+            let out = d.join("out.mp4");
+            export(&clip, &out, &r);
+            let encoded = common::file_frame(&out, 0.5);
+            let v = scene.video;
+            let region = (
+                v.x as usize + 4,
+                v.y as usize + 4,
+                v.w as usize - 8,
+                v.h as usize - 8,
+            );
+            let bytes = std::fs::metadata(&out).unwrap().len();
+            println!(
+            "{:?} pad {pad} {fps}fps {}x{}: video {:.0}x{:.0}, PSNR {:.2} dB (luma {:.2}), {:.1} Mbps",
+            aspect, scene.width, scene.height, v.w, v.h,
+            reference.psnr(&encoded, region),
+            reference.luma_psnr(&encoded, region),
+            bytes as f64 * 8.0 / 1.0 / 1e6
+        );
         }
     }
 }

@@ -1,0 +1,24 @@
+name: Idea
+description: Suggest something Clipt could do
+labels: [idea]
+body:
+  - type: markdown
+    attributes:
+      value: Clipt aims to stay small and frictionless, so ideas are discussed here before anyone builds them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How might Clipt help? Keep it as simple as you can.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: How do you work around it today?

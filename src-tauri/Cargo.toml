@@ -1,7 +1,7 @@
 [package]
 name = "clipt"
 version = "0.1.0"
-description = "A tiny screen recorder for clean demo videos"
+description = "A small, fast, frictionless screen recorder for macOS"
 license = "MIT"
 edition = "2021"
 rust-version = "1.85"
@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "protocol-asset", "image-png"] }
+tauri-plugin-dialog = "2"
 tauri-plugin-store = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }

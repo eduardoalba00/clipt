@@ -1,4 +1,4 @@
-//! Renders a take through its `Scene` into an MP4 tuned for X: H.264 (hardware
+//! Renders a take through its `Scene` into an MP4 that plays and uploads anywhere: H.264 (hardware
 //! encoder), AAC, at most 1080p, 30 or 60 fps.
 
 use std::path::{Path, PathBuf};
@@ -19,9 +19,6 @@ use crate::objc::{any, dict, file_url, int, k, ns, num, seconds, time, yes};
 use crate::render::{self, BGRA};
 use crate::scene::Scene;
 
-/// X's longest video is 2:20.
-pub const X_MAX_SECONDS: f64 = 140.0;
-
 const AUDIO_RATE: f64 = 48_000.0;
 const LPCM: u32 = u32::from_be_bytes(*b"lpcm");
 const AAC: u32 = u32::from_be_bytes(*b"aac ");
@@ -34,23 +31,47 @@ pub struct Job {
     pub out: PathBuf,
 }
 
-/// About 10 Mbps for 1080p30 and 16 Mbps for 1080p60, scaled by pixel count.
-pub fn bitrate(width: u32, height: u32, fps: u32) -> i64 {
-    let base = if fps > 30 { 16_000_000.0 } else { 10_000_000.0 };
-    let pixels = (width * height) as f64 / (1920.0 * 1080.0);
-    (base * pixels).max(4_000_000.0) as i64
+/// How the encoder spends bits.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Rate {
+    /// Constant quality, 0..1: as many bits as the picture needs.
+    Quality(f64),
+    /// An average bitrate in bits per second.
+    Bitrate(i64),
+}
+
+impl Rate {
+    pub fn setting(self) -> (&'static NSString, Retained<objc2_foundation::NSNumber>) {
+        match self {
+            Rate::Quality(q) => (k!(objc2_av_foundation::AVVideoQualityKey), num(q)),
+            Rate::Bitrate(b) => (k!(objc2_av_foundation::AVVideoAverageBitRateKey), int(b)),
+        }
+    }
+}
+
+/// Export quality. Measured on fine screen text (`tests/export.rs`,
+/// `quality`): a still screen keeps ~44 dB luma at ~9 Mbps, and scrolling
+/// keeps ~43 dB, where a flat 10-16 Mbps fell to 28-33 dB and smeared text.
+pub const EXPORT_QUALITY: f64 = 0.8;
+
+/// A common upload limit; exports stay under it.
+pub const UPLOAD_MAX_BYTES: u64 = 512 * 1024 * 1024;
+
+/// A bitrate that keeps `seconds` of video (plus AAC) safely under the upload limit.
+pub fn fit_bitrate(seconds: f64) -> i64 {
+    let budget = UPLOAD_MAX_BYTES as f64 * 0.92 * 8.0 / seconds.max(0.1);
+    (budget - 128_000.0).clamp(2_000_000.0, 40_000_000.0) as i64
 }
 
 fn video_settings(
     width: u32,
     height: u32,
     fps: u32,
+    rate: Rate,
 ) -> Retained<NSDictionary<NSString, objc2::runtime::AnyObject>> {
+    let (rate_key, rate_value) = rate.setting();
     let compression = dict(&[
-        (
-            k!(objc2_av_foundation::AVVideoAverageBitRateKey),
-            any(&*int(bitrate(width, height, fps))),
-        ),
+        (rate_key, any(&*rate_value)),
         (
             k!(objc2_av_foundation::AVVideoProfileLevelKey),
             any(k!(
@@ -183,8 +204,19 @@ pub fn frame_reader(
     }
 }
 
-/// Exports `job`, calling `progress` with 0..1 as it goes.
+/// Exports `job`, calling `progress` with 0..1 as it goes. Encodes at
+/// constant quality; if that would be too big to upload, encodes again at a
+/// bitrate that fits.
 pub fn run(job: &Job, progress: &dyn Fn(f64)) -> Result<()> {
+    encode(job, Rate::Quality(EXPORT_QUALITY), progress)?;
+    if std::fs::metadata(&job.out)?.len() > UPLOAD_MAX_BYTES {
+        let seconds = job.trim.1 - job.trim.0;
+        encode(job, Rate::Bitrate(fit_bitrate(seconds)), progress)?;
+    }
+    Ok(())
+}
+
+fn encode(job: &Job, rate: Rate, progress: &dyn Fn(f64)) -> Result<()> {
     let media = media::open(&job.screen, job.camera.as_deref())?;
     let total = media.seconds();
     let start = job.trim.0.clamp(0.0, total);
@@ -231,7 +263,7 @@ pub fn run(job: &Job, progress: &dyn Fn(f64)) -> Result<()> {
 
         let video_in = AVAssetWriterInput::assetWriterInputWithMediaType_outputSettings(
             video_kind,
-            Some(&video_settings(width, height, fps)),
+            Some(&video_settings(width, height, fps, rate)),
         );
         video_in.setExpectsMediaDataInRealTime(false);
         if !writer.canAddInput(&video_in) {
@@ -392,11 +424,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bitrate_scales() {
-        assert_eq!(bitrate(1920, 1080, 30), 10_000_000);
-        assert_eq!(bitrate(1920, 1080, 60), 16_000_000);
-        assert!(bitrate(1080, 1080, 30) < 10_000_000);
-        assert_eq!(bitrate(320, 240, 30), 4_000_000);
+    fn fallback_bitrate_fits_upload_limit() {
+        // 140 s at the fallback rate stays under 512 MB, audio included.
+        let rate = fit_bitrate(140.0);
+        let bytes = (rate + 128_000) as f64 * 140.0 / 8.0;
+        assert!(bytes < UPLOAD_MAX_BYTES as f64);
+        assert!(rate > 20_000_000);
+        assert_eq!(fit_bitrate(5.0), 40_000_000);
+        assert_eq!(fit_bitrate(10_000.0), 2_000_000);
     }
 
     #[test]

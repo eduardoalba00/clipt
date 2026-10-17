@@ -1,10 +1,11 @@
-//! Clipt: a tiny screen recorder for clean demo videos.
+//! Clipt: a small, fast, frictionless screen recorder for macOS.
 //!
 //! The page draws controls and keeps the edit history. Everything that
 //! touches media lives here: takes, the preview player, compositing, export
 //! and recording.
 
 pub mod export;
+mod indicator;
 pub mod macos;
 pub mod media;
 pub mod objc;
@@ -144,6 +145,33 @@ async fn start_recording(app: AppHandle, kind: record::Kind, mic: bool, camera: 
 }
 
 #[tauri::command]
+async fn permissions() -> record::Permissions {
+    record::permissions()
+}
+
+/// Shows the system prompt. Off the main thread: it waits for the answer.
+#[tauri::command]
+async fn request_permission(what: record::Permission) -> record::Permissions {
+    record::request(what)
+}
+
+#[tauri::command]
+fn open_privacy(what: record::Permission) {
+    macos::open_privacy(match what {
+        record::Permission::Screen => "Privacy_ScreenCapture",
+        record::Permission::Mic => "Privacy_Microphone",
+        record::Permission::Camera => "Privacy_Camera",
+    });
+}
+
+/// macOS applies a new Screen Recording grant only to a fresh process.
+#[tauri::command]
+fn relaunch(app: AppHandle) {
+    QUITTING.store(true, Ordering::SeqCst);
+    app.restart();
+}
+
+#[tauri::command]
 fn stop_recording(app: AppHandle) {
     std::thread::spawn(move || record::stop(&app));
 }
@@ -186,6 +214,36 @@ async fn resume_take(app: AppHandle, state: State<'_, AppState>, id: String) -> 
     let dir = take::root(&data_dir(&app)?).join(&id);
     let take = Take::open(&dir).map_err(err)?;
     adopt(&app, &state, take)
+}
+
+/// Image types Clipt takes as a background.
+const PICTURES: [&str; 7] = ["png", "jpg", "jpeg", "heic", "webp", "tiff", "gif"];
+
+/// Copies a picture into Clipt's backgrounds folder and returns its new path,
+/// so a take never depends on where the original lives.
+#[tauri::command]
+async fn add_background(app: AppHandle, path: String) -> Res<String> {
+    let source = std::path::Path::new(&path);
+    let ext = source
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .filter(|e| PICTURES.contains(&e.as_str()))
+        .ok_or("Clipt takes PNG, JPEG, HEIC, WebP, TIFF or GIF images")?;
+    let dir = data_dir(&app)?.join("backgrounds");
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let target = dir.join(format!("{stamp}.{ext}"));
+    std::fs::copy(source, &target).map_err(err)?;
+    let stored = target.to_string_lossy().into_owned();
+    if render::picture(&stored).is_none() {
+        let _ = std::fs::remove_file(&target);
+        return Err("Clipt couldn't read that image".into());
+    }
+    Ok(stored)
 }
 
 /// Deletes a leftover take the user chose not to continue.
@@ -447,6 +505,13 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[
             &MenuItem::with_id(app, "new", "New recording", true, Some("CmdOrCtrl+N"))?,
             &MenuItem::with_id(app, "export", "Export", true, Some("CmdOrCtrl+E"))?,
+            &MenuItem::with_id(
+                app,
+                "recordings",
+                "Open recordings",
+                true,
+                Some("CmdOrCtrl+Shift+O"),
+            )?,
             &sep()?,
             &PredefinedMenuItem::close_window(app, None)?,
         ],
@@ -480,12 +545,16 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppState::default())
         .menu(menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "quit" => request_quit(app),
+            "recordings" => {
+                let _ = open_recordings(app.clone());
+            }
             id => {
                 let _ = app.emit("menu", id.to_string());
             }
@@ -513,10 +582,15 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_recording,
             stop_recording,
+            permissions,
+            request_permission,
+            open_privacy,
+            relaunch,
             import_video,
             leftover_take,
             resume_take,
             discard_leftover,
+            add_background,
             set_recipe,
             preview_insets,
             preview_visible,

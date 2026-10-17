@@ -1,38 +1,106 @@
-# Clipt
+<p align="center">
+  <img width="128" height="128" src="docs/logo.png" alt="Clipt logo">
+</p>
 
-A tiny macOS screen recorder for clean demo videos to post on X. Record your
-screen, a window or a dragged area, then give it a background, padding,
-rounded corners, a shadow and an optional browser frame, and export an MP4
-that X takes as is.
+<h1 align="center">Clipt</h1>
 
-![Clipt's compositor turning a raw recording into a framed demo](docs/demo.gif)
+<p align="center">
+  Screen recording for macOS that gets out of your way.<br>
+  Small, fast and frictionless. Free and open source.
+</p>
 
-<sub>The GIF above is rendered by Clipt's own compositor from a generated
-recording (`cargo test --release --test export demo -- --ignored`), stepping
-through the styles.</sub>
+<p align="center">
+  <a href="https://github.com/eduardoalba00/clipt/releases">Download</a>
+  &nbsp;·&nbsp;
+  <a href="#build-from-source">Build from source</a>
+  &nbsp;·&nbsp;
+  <a href="CONTRIBUTING.md">Contributing</a>
+  &nbsp;·&nbsp;
+  <a href="LICENSE">MIT License</a>
+</p>
 
-## What it does
+<p align="center">
+  <img src="docs/demo.gif" alt="A recording going from raw capture to a framed, styled video in Clipt" width="760">
+</p>
 
-- **Record** the whole screen or one window (the system picker), or drag to
-  select an area. Optional microphone and camera. Stop with <kbd>⌘⇧2</kbd> or
-  the menu bar icon.
-- **Trim** on a filmstrip. Playback respects the trim.
-- **Crop** with a rectangle you drag and resize on the preview.
-- **Style**: eight background presets or any colour, padding, corners, shadow,
-  and Auto, 16:9, 1:1 or 4:5 output.
-- **Browser frame**: minimal chrome with traffic lights and an editable address.
-- **Camera bubble**: a round camera overlay in any corner, any size.
-- **Export**: H.264 + AAC, at most 1080p, 30 or 60 fps. Clipt warns (without
-  stopping you) when the clip is longer than X's 2:20. The file is revealed in
-  Finder and copied to the clipboard, ready to paste into a post.
-- **Import**: drop any .mov or .mp4, including ⌘⇧5 recordings.
+Clipt is a lightweight screen recorder for the Mac. Press <kbd>⌘N</kbd>,
+pick a screen, a window or an area, and record. When you stop, the
+recording opens in a simple editor where you can trim it, crop it and give it
+a clean background in a few seconds. Then export an MP4 that's already on your
+clipboard.
 
-Recordings are *takes*: raw files kept in Clipt's working folder
-(`~/Library/Application Support/com.clipt.desktop/takes`). Your edits are a
-recipe on top, with full undo. An MP4 only exists once you export, into
-`~/Movies/Clipt`, and exports never overwrite a file. Clipt asks before
-throwing away a take that was never exported; a take left over when you quit
-is offered back on the next launch.
+No account. No uploads. No watermark. No subscription. Your recordings stay on
+your Mac.
+
+## Why Clipt
+
+- **Fast to start.** One shortcut, one choice, recording. Stop from the menu
+  bar or with <kbd>⌘⇧2</kbd>.
+- **Frictionless.** Nothing to sign up for and nothing to configure. Clipt
+  remembers your last style and gets out of the way.
+- **Polished in seconds.** Backgrounds, padding, rounded corners, a soft
+  shadow, an optional browser frame and a camera bubble, previewed live.
+- **Lightweight.** About 8 MB. Built on Apple's own ScreenCaptureKit,
+  AVFoundation and Core Image, with no ffmpeg and nothing running in the
+  background.
+- **Private by default.** Everything happens on your Mac. Clipt never talks to
+  a server.
+- **Keyboard first.** Every common action has a shortcut, and the shortcuts
+  are shown where you need them.
+
+## Features
+
+| | |
+| --- | --- |
+| **Record** | Full screen or a single window (the system picker), or drag to select any area. The area being recorded stays lit while the rest of the screen dims. Optional microphone and camera. |
+| **Trim** | A filmstrip with handles. Set in and out at the playhead with <kbd>I</kbd> and <kbd>O</kbd>. |
+| **Crop** | Drag a frame on the preview, freely or locked to 16:9, 4:3, 1:1, 4:5 or 9:16. |
+| **Style** | Eight background presets, any colour, or your own picture. Padding, corners and shadow. Output at Auto, 16:9, 4:3, 1:1 or 4:5. |
+| **Frame** | Minimal browser chrome with an editable address, light or dark. |
+| **Camera** | A round camera bubble in any corner, at any size. |
+| **Export** | H.264 + AAC MP4, up to 1080p at 30 or 60 fps. Revealed in Finder and copied to the clipboard as a file, ready to paste. |
+| **Import** | Drop in any .mov or .mp4, including macOS ⌘⇧5 recordings. |
+
+Edits are a recipe on top of the original recording, with full undo, so
+nothing is lost until you export. Exports go to `~/Movies/Clipt` and never
+overwrite a file.
+
+## Get started
+
+Clipt runs on macOS 14 (Sonoma) or later and is built and tested on Apple
+Silicon.
+
+Prebuilt releases will be published on the
+[Releases](https://github.com/eduardoalba00/clipt/releases) page. Until then,
+build it from source; it takes a couple of minutes.
+
+The first time you open Clipt, it asks for the permissions it needs: Screen
+Recording, and the microphone and camera if you want them. You can revisit
+them from the shield icon in the launcher.
+
+### Build from source
+
+You'll need [Rust](https://rustup.rs), Node.js 20 or newer, and Xcode's
+command line tools.
+
+```sh
+git clone https://github.com/eduardoalba00/clipt.git
+cd clipt
+npm install
+npm run tauri build
+open src-tauri/target/release/bundle/macos/Clipt.app
+```
+
+Open the bundled `Clipt.app`, not the bare binary from a terminal: macOS
+grants Screen Recording to whichever app launched the process.
+
+Unsigned builds get a new signature every time, and macOS then forgets their
+permissions. To keep them across rebuilds, give Clipt a stable identity once:
+
+```sh
+scripts/setup-signing.sh
+APPLE_SIGNING_IDENTITY="Clipt Dev" npm run tauri build
+```
 
 ## Shortcuts
 
@@ -41,85 +109,65 @@ is offered back on the next launch.
 | <kbd>⌘N</kbd> | New recording |
 | <kbd>⌘⇧2</kbd> | Stop recording |
 | <kbd>Space</kbd> | Play / pause |
-| <kbd>I</kbd> / <kbd>O</kbd> | Set trim in / out at the playhead |
-| <kbd>C</kbd> | Crop mode (<kbd>Esc</kbd> or <kbd>C</kbd> to finish) |
+| <kbd>I</kbd> / <kbd>O</kbd> | Set trim in / out |
+| <kbd>C</kbd> | Crop |
 | <kbd>⌘E</kbd> | Export |
-| <kbd>⌘Z</kbd> / <kbd>⌘⇧Z</kbd> | Undo / redo (trim, crop, style, frame text) |
-
-## Requirements
-
-macOS 14 (Sonoma) or later. Built and tested on Apple Silicon.
-
-## Build
-
-```sh
-npm install
-npm run tauri build          # → src-tauri/target/release/bundle/macos/Clipt.app
-```
-
-Run the bundled `Clipt.app`, not the bare binary from a terminal: macOS
-grants Screen Recording to whichever app launched the process.
-
-### Keep permissions across rebuilds
-
-Unsigned (ad-hoc) builds get a new signature every time, and macOS then
-forgets the Screen Recording, Microphone and Camera permissions. Give the app
-a stable identity once:
-
-```sh
-scripts/setup-signing.sh     # uses your Apple Development cert, or makes "Clipt Dev"
-APPLE_SIGNING_IDENTITY="Clipt Dev" npm run tauri build
-```
-
-## Checks
-
-```sh
-npm run typecheck && npm run lint
-cd src-tauri
-cargo clippy --all-targets -- -D warnings
-cargo test
-```
-
-`cargo test` includes two end-to-end checks:
-
-- **export**: generates a clip in code (video and a tone), exports it with
-  known settings and reads the file back with AVFoundation: duration,
-  resolution, frame rate and codecs (`avc1`, `aac `).
-- **parity**: plays a generated take through the preview's own `AVPlayerItem`
-  on the main thread and compares the frame with the export path: the
-  unencoded frames must be identical, and the encoded MP4 must be within
-  H.264's loss of the preview.
+| <kbd>⌘⇧O</kbd> | Open recordings |
+| <kbd>⌘Z</kbd> / <kbd>⌘⇧Z</kbd> | Undo / redo |
 
 ## How it works
 
-Tauri 2 with a Rust core and a React 19 + Tailwind v4 page. The page only
-draws controls and keeps the undo history; all media work is in Rust through
-`objc2` bindings to Apple's frameworks. There is no ffmpeg.
+Clipt is a [Tauri 2](https://tauri.app) app. A Rust core does all the media
+work through Apple's frameworks; a React interface only draws controls.
 
-One source of truth: the recipe becomes a Rust `Scene` (canvas size, video
-rect, crop, radius, padding, frame, camera bubble, fill). A custom
-`AVVideoCompositing` compositor draws a `Scene` with Core Image. The preview
-is an `AVPlayer` with that compositor, shown in a native layer under the
-transparent webview; export reads the same composition through an
-`AVAssetReader` into an `AVAssetWriter` (hardware H.264). Preview and export
-run the same code, so they can't drift.
+A single description of the frame, the `Scene`, drives both the live preview
+and the export. A custom video compositor draws it with Core Image for the
+preview player and for the exporter alike, so what you see is exactly what you
+get. An automated test checks that the two produce identical frames.
+
+Exports use constant-quality H.264 on the hardware encoder, so text stays
+sharp on still screens without wasting space, and busy scenes get the bits
+they need.
+
+## Development
+
+```sh
+npm install
+npm run tauri dev       # run with hot reload
+npm run check           # typecheck, lint, clippy and tests
+```
 
 ```
 src-tauri/src/
-  scene.rs    recipe → Scene layout (pure, unit-tested), presets
-  render.rs   Core Image compositing; the custom compositor
-  media.rs    a take's files as one composition; filmstrip thumbnails
-  preview.rs  the AVPlayer layer under the webview
-  export.rs   reader → writer, X-friendly settings, naming
-  record.rs   ScreenCaptureKit, area selection, mic and camera
-  take.rs     the working folder
-  macos.rs    window glass, traffic lights, Finder and clipboard
-  tray.rs     the menu bar icon
+  scene.rs      the frame layout, from the user's settings
+  render.rs     Core Image compositing and the video compositor
+  media.rs      a recording's files as one composition
+  preview.rs    the native preview player under the interface
+  export.rs     encoding the MP4
+  record.rs     ScreenCaptureKit, area selection, mic and camera
+  indicator.rs  dimming everything that isn't being recorded
+  take.rs       recordings kept in Clipt's working folder
+  macos.rs      window chrome, Finder and clipboard
 src/
-  App.tsx, components/   launcher, editor, preview, inspector, timeline
-  lib/                   recipe types, undo history, IPC, settings
+  components/   launcher, onboarding, editor, preview, inspector, timeline
+  lib/          settings types, undo history, IPC, geometry
 ```
+
+The Rust tests include an end-to-end export check (a clip generated in code is
+exported and read back with AVFoundation) and the preview/export parity check.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Please read
+[CONTRIBUTING.md](CONTRIBUTING.md) first. Clipt aims to stay small, so new
+features are discussed in an issue before they're built.
+
+Everyone taking part is expected to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md). To report a security problem, see
+[SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Clipt is released under the [MIT License](LICENSE). It adapts some interface
+and window code from [MonoCode](NOTICE) and uses
+[Hugeicons](https://hugeicons.com) free icons; see [NOTICE](NOTICE).

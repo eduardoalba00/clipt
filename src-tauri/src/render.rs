@@ -165,9 +165,63 @@ fn disc(cx: f64, cy: f64, radius: f64, c: Rgb, alpha: f64) -> Retained<CIImage> 
     }
 }
 
-fn background(fill: Fill, canvas: CGRect) -> Retained<CIImage> {
+/// Decoded background pictures, by path. Every frame reuses them.
+pub fn picture(path: &str) -> Option<Retained<CIImage>> {
+    struct Cached(Retained<CIImage>);
+    // SAFETY: CIImage is immutable and thread safe.
+    unsafe impl Send for Cached {}
+    static CACHE: std::sync::Mutex<Vec<(String, Cached)>> = std::sync::Mutex::new(Vec::new());
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, c)) = cache.iter().find(|(p, _)| p == path) {
+        return Some(c.0.clone());
+    }
+    let url = crate::objc::file_url(std::path::Path::new(path));
+    // SAFETY: Loading an image file; Core Image applies its orientation.
+    let image = unsafe {
+        let options = dict(&[(
+            objc2_core_image::kCIImageApplyOrientationProperty,
+            any(&*yes()),
+        )]);
+        CIImage::imageWithContentsOfURL_options(&url, Some(&options))?
+    };
+    // Keep a few; backgrounds rarely change.
+    if cache.len() >= 4 {
+        cache.remove(0);
+    }
+    cache.push((path.to_string(), Cached(image.clone())));
+    Some(image)
+}
+
+/// `image` scaled to cover `canvas`, centred.
+fn cover(image: &CIImage, canvas: CGRect) -> Retained<CIImage> {
+    // SAFETY: Plain Core Image calls.
+    unsafe {
+        let e = image.extent();
+        let s = (canvas.size.width / e.size.width).max(canvas.size.height / e.size.height);
+        let (w, h) = (e.size.width * s, e.size.height * s);
+        let m = concat(
+            concat(translate(-e.origin.x, -e.origin.y), scale(s, s)),
+            translate(
+                (canvas.size.width - w) / 2.0,
+                (canvas.size.height - h) / 2.0,
+            ),
+        );
+        image
+            .imageByApplyingTransform_highQualityDownsample(cg(m), true)
+            .imageByCroppingToRect(canvas)
+    }
+}
+
+fn background(fill: &Fill, canvas: CGRect) -> Retained<CIImage> {
     match fill {
-        Fill::Solid { color } => solid(color, 1.0, canvas),
+        Fill::Solid { color } => solid(*color, 1.0, canvas),
+        Fill::Image { path } => match picture(path) {
+            Some(image) => over(
+                &cover(&image, canvas),
+                &solid(Rgb::hex(0x111113), 1.0, canvas),
+            ),
+            None => solid(Rgb::hex(0x111113), 1.0, canvas),
+        },
         Fill::Gradient { from, to } => {
             // Top-left to bottom-right.
             // SAFETY: Plain Core Image calls.
@@ -182,8 +236,8 @@ fn background(fill: Fill, canvas: CGRect) -> Retained<CIImage> {
                 &[
                     (&ns("inputPoint0"), any(&*p0)),
                     (&ns("inputPoint1"), any(&*p1)),
-                    (&ns("inputColor0"), any(&*color(from, 1.0))),
-                    (&ns("inputColor1"), any(&*color(to, 1.0))),
+                    (&ns("inputColor0"), any(&*color(*from, 1.0))),
+                    (&ns("inputColor1"), any(&*color(*to, 1.0))),
                 ],
             );
             // A fixed, faint noise keeps the encoder from banding the gradient.
@@ -334,7 +388,7 @@ pub fn compose(scene: &Scene, screen: &CIImage, camera: Option<&CIImage>) -> Ret
     let shape = rounded(card, scene.radius, Rgb::hex(0xFFFFFF), 1.0);
     let card_image = masked(&card_image, &shape);
 
-    let mut out = background(scene.fill, canvas);
+    let mut out = background(&scene.fill, canvas);
     if let Some(shadow) = scene.shadow {
         let shade = rounded(card, scene.radius, Rgb::hex(0), shadow.opacity);
         // SAFETY: Plain Core Image calls.

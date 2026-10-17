@@ -202,11 +202,21 @@ pub fn reveal_in_finder(path: &Path) {
         .activateFileViewerSelectingURLs(&NSArray::from_retained_slice(&[url]));
 }
 
+/// Opens a pane of System Settings, Privacy & Security.
+pub fn open_privacy(pane: &str) {
+    let url = objc2_foundation::NSURL::URLWithString(&NSString::from_str(&format!(
+        "x-apple.systempreferences:com.apple.preference.security?{pane}"
+    )));
+    if let Some(url) = url {
+        NSWorkspace::sharedWorkspace().openURL(&url);
+    }
+}
+
 pub fn open_folder(path: &Path) {
     NSWorkspace::sharedWorkspace().openURL(&file_url(path));
 }
 
-/// Puts the file itself on the clipboard, so pasting into X attaches it.
+/// Puts the file itself on the clipboard, so pasting into a post or chat attaches it.
 pub fn copy_file(path: &Path) {
     let board = NSPasteboard::generalPasteboard();
     board.clearContents();

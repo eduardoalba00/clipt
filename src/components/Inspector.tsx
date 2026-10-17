@@ -1,10 +1,14 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useState, type ReactNode } from "react";
-import { isFull } from "../lib/geometry";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEffect, useState, type ReactNode } from "react";
+import { message } from "../lib/ipc";
+import { choosePicture } from "../lib/pictures";
+import { loadPicture } from "../lib/settings";
+import { CROP_RATIOS, isFull, type CropRatio } from "../lib/geometry";
 import { PRESETS, swatch } from "../lib/presets";
 import type { Aspect, Corner, Fps, Recipe } from "../lib/recipe";
 import { Kbd, SecondaryButton, Segmented, Slider, Switch } from "./ui/controls";
-import { Crop, Pipette } from "./ui/icons";
+import { Crop, ImageIcon, Pipette } from "./ui/icons";
 import { ColorPicker, Popover, Tooltip } from "./ui/overlays";
 
 function Section({ label, children, trailing }: { label: string; children?: ReactNode; trailing?: ReactNode }) {
@@ -42,6 +46,7 @@ function Reveal({ open, children }: { open: boolean; children: ReactNode }) {
 const ASPECTS: { value: Aspect; label: string }[] = [
   { value: "auto", label: "Auto" },
   { value: "16:9", label: "16:9" },
+  { value: "4:3", label: "4:3" },
   { value: "1:1", label: "1:1" },
   { value: "4:5", label: "4:5" },
 ];
@@ -57,6 +62,8 @@ export function Inspector({
   recipe,
   hasCamera,
   cropping,
+  cropRatio,
+  onCropRatio,
   onApply,
   onInput,
   onCommit,
@@ -65,6 +72,8 @@ export function Inspector({
   recipe: Recipe;
   hasCamera: boolean;
   cropping: boolean;
+  cropRatio: CropRatio;
+  onCropRatio: (ratio: CropRatio) => void;
   onApply: (r: Recipe) => void;
   onInput: (r: Recipe) => void;
   onCommit: () => void;
@@ -76,6 +85,26 @@ export function Inspector({
   const [url, setUrl] = useState<string | null>(null);
   const bg = style.background;
   const custom = bg.kind === "solid" ? bg.color : "#5b6cff";
+  const [remembered, setRemembered] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const picture = bg.kind === "image" ? bg.path : remembered;
+
+  useEffect(() => {
+    void loadPicture().then(setRemembered);
+  }, []);
+
+  const pick = async () => {
+    setFailed(null);
+    try {
+      const path = await choosePicture();
+      if (path) {
+        setRemembered(path);
+        setStyle({ background: { kind: "image", path } });
+      }
+    } catch (e) {
+      setFailed(message(e));
+    }
+  };
 
   const setStyle = (next: Partial<Recipe["style"]>, live = false) =>
     (live ? onInput : onApply)({ ...recipe, style: { ...style, ...next } });
@@ -84,7 +113,7 @@ export function Inspector({
     <div className="min-h-0 flex-1 overflow-y-auto pb-4">
       <div className={cropping ? "pointer-events-none opacity-35 transition-opacity" : "transition-opacity"}>
         <Section label="Background">
-          <div className="grid grid-cols-9 gap-1.5">
+          <div className="grid grid-cols-5 gap-2">
             {PRESETS.map((p) => {
               const on = bg.kind === "preset" && bg.id === p.id;
               return (
@@ -121,10 +150,28 @@ export function Inspector({
                     bg.kind === "solid" ? bg.color : "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)",
                 }}
               >
-                {bg.kind !== "solid" ? <Pipette size={10} strokeWidth={2.25} className="text-white drop-shadow" /> : null}
+                {bg.kind !== "solid" ? <Pipette size={12} strokeWidth={2.25} className="text-white drop-shadow" /> : null}
+              </button>
+            </Tooltip>
+            <Tooltip label={picture && bg.kind !== "image" ? "Picture" : "Choose picture"}>
+              <button
+                type="button"
+                aria-label={picture ? "Picture" : "Choose picture"}
+                aria-pressed={bg.kind === "image"}
+                onClick={() => {
+                  if (picture && bg.kind !== "image") setStyle({ background: { kind: "image", path: picture } });
+                  else void pick();
+                }}
+                className={`grid aspect-square place-items-center overflow-hidden rounded-full border border-content/10 bg-selection bg-cover bg-center text-content/60 ${
+                  bg.kind === "image" ? "ring-2 ring-content/80 ring-offset-2 ring-offset-transparent" : "hover:scale-110"
+                } transition-transform`}
+                style={picture ? { backgroundImage: `url("${convertFileSrc(picture)}")` } : undefined}
+              >
+                {picture ? null : <ImageIcon size={14} />}
               </button>
             </Tooltip>
           </div>
+          {failed ? <p className="mt-2 text-[11.5px] text-warning">{failed}</p> : null}
           {picking ? (
             <Popover anchor={customEl} side="left" align="start" onDismiss={() => setPicking(false)}>
               <ColorPicker
@@ -292,11 +339,30 @@ export function Inspector({
           </div>
         }
       >
-        {cropping ? (
-          <p className="text-[11.5px] leading-snug text-content/45">
-            Drag the frame or its handles. Press <Kbd>C</Kbd> or <Kbd>Esc</Kbd> when done.
-          </p>
-        ) : null}
+        <Reveal open={cropping}>
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-3 gap-1">
+              {CROP_RATIOS.map((ratio) => (
+                <button
+                  key={ratio}
+                  type="button"
+                  aria-pressed={cropRatio === ratio}
+                  onClick={() => onCropRatio(ratio)}
+                  className={`h-6 rounded-[5px] text-[11.5px] tabular ${
+                    cropRatio === ratio
+                      ? "bg-selection-emphasis text-content"
+                      : "bg-selection-subtle text-content/55 hover:text-content/85"
+                  }`}
+                >
+                  {ratio === "free" ? "Free" : ratio}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11.5px] leading-snug text-content/45">
+              Drag the frame or its handles. Press <Kbd>C</Kbd> or <Kbd>Esc</Kbd> when done.
+            </p>
+          </div>
+        </Reveal>
       </Section>
     </div>
   );

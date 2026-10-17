@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Output frames are capped at 1080p for X.
+/// Output frames are capped at 1080p: sharp everywhere, small to share.
 pub const MAX_LONG: f64 = 1920.0;
 pub const MAX_SHORT: f64 = 1080.0;
 
@@ -52,8 +52,16 @@ pub struct Style {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Background {
-    Preset { id: String },
-    Solid { color: String },
+    Preset {
+        id: String,
+    },
+    Solid {
+        color: String,
+    },
+    /// A picture of the user's, copied into Clipt's backgrounds folder.
+    Image {
+        path: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -88,6 +96,8 @@ pub enum Aspect {
     Auto,
     #[serde(rename = "16:9")]
     Wide,
+    #[serde(rename = "4:3")]
+    Classic,
     #[serde(rename = "1:1")]
     Square,
     #[serde(rename = "4:5")]
@@ -126,11 +136,20 @@ impl Rgb {
     }
 }
 
-#[derive(Serialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Fill {
-    Solid { color: Rgb },
-    Gradient { from: Rgb, to: Rgb },
+    Solid {
+        color: Rgb,
+    },
+    Gradient {
+        from: Rgb,
+        to: Rgb,
+    },
+    /// Scaled to cover the canvas, centred.
+    Image {
+        path: String,
+    },
 }
 
 pub struct Preset {
@@ -175,11 +194,12 @@ impl Background {
             Background::Preset { id } => PRESETS
                 .iter()
                 .find(|p| p.id == id)
-                .map(|p| p.fill)
-                .unwrap_or(PRESETS[0].fill),
+                .map(|p| p.fill.clone())
+                .unwrap_or(PRESETS[0].fill.clone()),
             Background::Solid { color } => Fill::Solid {
                 color: Rgb::parse(color).unwrap_or(Rgb::hex(0x111113)),
             },
+            Background::Image { path } => Fill::Image { path: path.clone() },
         }
     }
 }
@@ -333,6 +353,7 @@ impl Scene {
             Aspect::Auto => fit_max((card_aspect + 2.0 * auto_pad) / (1.0 + 2.0 * auto_pad)),
             Aspect::Wide => (1920, 1080),
             Aspect::Square => (1080, 1080),
+            Aspect::Classic => (1440, 1080),
             Aspect::Portrait => (1080, 1350),
         };
         let (w, h) = (width as f64, height as f64);
@@ -493,6 +514,7 @@ mod tests {
         for (aspect, size) in [
             (Aspect::Wide, (1920, 1080)),
             (Aspect::Square, (1080, 1080)),
+            (Aspect::Classic, (1440, 1080)),
             (Aspect::Portrait, (1080, 1350)),
         ] {
             r.output.aspect = aspect;

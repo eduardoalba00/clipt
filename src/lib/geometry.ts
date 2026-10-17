@@ -40,6 +40,64 @@ export function dragCrop(start: NormRect, edge: Edge, dx: number, dy: number): N
   return { x: left, y: top, w: right - left, h: bottom - top };
 }
 
+/** A crop shape, as width over height in source pixels. */
+export type CropRatio = "free" | "16:9" | "4:3" | "1:1" | "4:5" | "9:16";
+
+export const CROP_RATIOS: readonly CropRatio[] = ["free", "16:9", "4:3", "1:1", "4:5", "9:16"];
+
+/** The ratio in 0..1 crop units: pixel ratio corrected for the source's shape. */
+export function normRatio(ratio: CropRatio, sourceW: number, sourceH: number): number | null {
+  if (ratio === "free") return null;
+  const [a, b] = ratio.split(":").map(Number);
+  return (a / b) * (sourceH / sourceW);
+}
+
+/** The largest-ish rect of ratio `rn` about the same size and centre as `r`. */
+export function fitRatio(r: NormRect, rn: number): NormRect {
+  let w = Math.sqrt(r.w * r.h * rn);
+  let h = w / rn;
+  const shrink = Math.min(1, 1 / w, 1 / h);
+  w *= shrink;
+  h *= shrink;
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  return { x: clamp(cx - w / 2, 0, 1 - w), y: clamp(cy - h / 2, 0, 1 - h), w, h };
+}
+
+/** Like `dragCrop`, keeping the shape at ratio `rn` (crop units). Corners
+ * grow from the opposite corner; edges grow from the opposite edge, centred. */
+export function dragCropLocked(start: NormRect, edge: Edge, dx: number, dy: number, rn: number): NormRect {
+  if (edge === "move") return dragCrop(start, edge, dx, dy);
+  const minW = Math.max(MIN_CROP, MIN_CROP * rn);
+  const right = edge.includes("e");
+  const down = edge.includes("s");
+  if (edge.length === 2) {
+    const ax = right ? start.x : start.x + start.w;
+    const ay = down ? start.y : start.y + start.h;
+    const wantW = start.w + (right ? dx : -dx);
+    const wantH = start.h + (down ? dy : -dy);
+    const roomW = right ? 1 - ax : ax;
+    const roomH = down ? 1 - ay : ay;
+    const w = clamp(Math.max(wantW, wantH * rn), minW, Math.min(roomW, roomH * rn));
+    const h = w / rn;
+    return { x: right ? ax : ax - w, y: down ? ay : ay - h, w, h };
+  }
+  if (edge === "n" || edge === "s") {
+    const ay = down ? start.y : start.y + start.h;
+    const roomH = down ? 1 - ay : ay;
+    const h = clamp(start.h + (down ? dy : -dy), minW / rn, Math.min(roomH, 1 / rn));
+    const w = h * rn;
+    const x = clamp(start.x + start.w / 2 - w / 2, 0, 1 - w);
+    return { x, y: down ? ay : ay - h, w, h };
+  }
+  const ax = right ? start.x : start.x + start.w;
+  const roomW = right ? 1 - ax : ax;
+  const w = clamp(start.w + (right ? dx : -dx), minW, Math.min(roomW, rn));
+  const h = w / rn;
+  const y = clamp(start.y + start.h / 2 - h / 2, 0, 1 - h);
+  return { x: right ? ax : ax - w, y, w, h };
+}
+
 export function isFull(r: NormRect | null): boolean {
   return (
     !r ||

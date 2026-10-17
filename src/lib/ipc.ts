@@ -30,6 +30,10 @@ export type RecordingEvent =
   | { state: "cancelled" }
   | { state: "failed"; message: string };
 
+export type Access = "granted" | "denied" | "notAsked";
+export type Permissions = { screen: Access; mic: Access; camera: Access };
+export type Permission = keyof Permissions;
+
 export type MenuAction = "new" | "export" | "undo" | "redo" | "stop";
 
 export const ipc = {
@@ -37,6 +41,8 @@ export const ipc = {
   leftoverTake: () => invoke<Leftover | null>("leftover_take"),
   resumeTake: (id: string) => invoke<TakeInfo>("resume_take", { id }),
   discardLeftover: (id: string) => invoke<void>("discard_leftover", { id }),
+  /** Copies a picture into Clipt's backgrounds folder; returns its new path. */
+  addBackground: (path: string) => invoke<string>("add_background", { path }),
   setRecipe: (recipe: Recipe, cropping: boolean, persist: boolean) =>
     invoke<Scene>("set_recipe", { recipe, cropping, persist }),
   previewInsets: (top: number, right: number, bottom: number, left: number) =>
@@ -56,6 +62,10 @@ export const ipc = {
   startRecording: (kind: RecordKind, mic: boolean, camera: boolean) =>
     invoke<void>("start_recording", { kind, mic, camera }),
   stopRecording: () => invoke<void>("stop_recording"),
+  permissions: () => invoke<Permissions>("permissions"),
+  requestPermission: (what: Permission) => invoke<Permissions>("request_permission", { what }),
+  openPrivacy: (what: Permission) => invoke<void>("open_privacy", { what }),
+  relaunch: () => invoke<void>("relaunch"),
 };
 
 type Events = {

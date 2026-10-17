@@ -37,6 +37,10 @@ impl Frame {
         let Ok(dir) = std::env::var("CLIPT_DUMP") else {
             return;
         };
+        self.write_bmp(&std::path::Path::new(&dir).join(format!("{name}.bmp")));
+    }
+
+    pub fn write_bmp(&self, path: &Path) {
         let mut out = Vec::with_capacity(54 + self.bgra.len());
         let size = 54 + self.bgra.len() as u32;
         out.extend_from_slice(b"BM");
@@ -50,7 +54,41 @@ impl Frame {
         out.extend_from_slice(&32u16.to_le_bytes());
         out.extend_from_slice(&[0; 24]);
         out.extend_from_slice(&self.bgra);
-        std::fs::write(std::path::Path::new(&dir).join(format!("{name}.bmp")), out).unwrap();
+        std::fs::write(path, out).unwrap();
+    }
+
+    /// PSNR in dB over a region (x, y, w, h), RGB only.
+    pub fn psnr(&self, other: &Frame, region: (usize, usize, usize, usize)) -> f64 {
+        let (x0, y0, w, h) = region;
+        let mut sum = 0f64;
+        let mut count = 0f64;
+        for y in y0..y0 + h {
+            for x in x0..x0 + w {
+                let (a, b) = (self.pixel(x, y), other.pixel(x, y));
+                for c in 0..3 {
+                    let d = a[c] as f64 - b[c] as f64;
+                    sum += d * d;
+                    count += 1.0;
+                }
+            }
+        }
+        let mse = (sum / count).max(1e-9);
+        10.0 * (255.0f64 * 255.0 / mse).log10()
+    }
+
+    /// PSNR of luma only (Rec. 709 weights): what sharpness looks like.
+    pub fn luma_psnr(&self, other: &Frame, region: (usize, usize, usize, usize)) -> f64 {
+        let (x0, y0, w, h) = region;
+        let y = |p: [u8; 3]| 0.2126 * p[0] as f64 + 0.7152 * p[1] as f64 + 0.0722 * p[2] as f64;
+        let mut sum = 0f64;
+        for yy in y0..y0 + h {
+            for x in x0..x0 + w {
+                let d = y(self.pixel(x, yy)) - y(other.pixel(x, yy));
+                sum += d * d;
+            }
+        }
+        let mse = (sum / (w * h) as f64).max(1e-9);
+        10.0 * (255.0f64 * 255.0 / mse).log10()
     }
 
     pub fn pixel(&self, x: usize, y: usize) -> [u8; 3] {
@@ -237,6 +275,43 @@ pub type Paint = fn(usize, usize, usize, usize, usize) -> [u8; 3];
 /// optionally with a tone.
 pub fn make_clip(path: &Path, width: usize, height: usize, fps: usize, secs: f64, audio: bool) {
     make_painted(path, width, height, fps, secs, audio, pattern);
+}
+
+/// Screen-like text: rows of thin glyph strokes, white and coloured, on a
+/// dark background, scrolling slowly. The hardest thing a screen recording
+/// has to keep sharp.
+pub fn text(x: usize, y: usize, n: usize, _w: usize, _h: usize) -> [u8; 3] {
+    let y = y + n / 2;
+    let line = y / 28;
+    let (cx, cy) = (x % 14, y % 28);
+    let glyph = x / 14;
+    let blank = (glyph + line * 7) % 9 == 0 || !(6..22).contains(&cy);
+    if blank {
+        return [22, 23, 26];
+    }
+    let seed = (glyph * 2654435761 + line * 40503) % 997;
+    let stroke = match seed % 4 {
+        0 => cx == 3 || cx == 4 || cy == 13,
+        1 => cx == 2 + (cy - 6) / 3 || cy == 21,
+        2 => cx == 9 || cy == 6 || (cy == 14 && cx < 10),
+        _ => (cx as isize - 6).abs() + (cy as isize - 14).abs() / 2 == 4,
+    };
+    if !stroke {
+        return [22, 23, 26];
+    }
+    match line % 5 {
+        0 => [120, 180, 255],
+        3 => [240, 140, 100],
+        _ => [232, 232, 236],
+    }
+}
+
+/// The same text, standing still, with a blinking caret: a typical demo.
+pub fn text_still(x: usize, y: usize, n: usize, w: usize, h: usize) -> [u8; 3] {
+    if (n / 15) % 2 == 0 && (600..603).contains(&x) && (300..324).contains(&y) {
+        return [255, 255, 255];
+    }
+    text(x, y, 0, w, h)
 }
 
 /// A dark app window: sidebar, toolbar, cards and a moving pointer. Used for

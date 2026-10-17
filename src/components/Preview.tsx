@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { contain, dragCrop, FULL, type Edge } from "../lib/geometry";
+import { contain, dragCrop, dragCropLocked, FULL, type Edge } from "../lib/geometry";
 import { ipc } from "../lib/ipc";
 import type { NormRect, Rect, Scene } from "../lib/recipe";
 import { SPRING, Shimmer } from "./ui/controls";
@@ -14,6 +14,7 @@ export function Preview({
   cropping,
   crop,
   source,
+  ratio,
   onCropInput,
   onCropCommit,
   onTogglePlay,
@@ -22,6 +23,8 @@ export function Preview({
   cropping: boolean;
   crop: NormRect | null;
   source: { width: number; height: number };
+  /** Locked crop shape in crop units, if any. */
+  ratio: number | null;
   onCropInput: (crop: NormRect) => void;
   onCropCommit: () => void;
   onTogglePlay: () => void;
@@ -57,7 +60,14 @@ export function Preview({
             <Shimmer>Preparing preview</Shimmer>
           </div>
         ) : canvas && cropping && scene.plain ? (
-          <CropOverlay canvas={canvas} crop={crop ?? FULL} source={source} onInput={onCropInput} onCommit={onCropCommit} />
+          <CropOverlay
+            canvas={canvas}
+            crop={crop ?? FULL}
+            source={source}
+            ratio={ratio}
+            onInput={onCropInput}
+            onCommit={onCropCommit}
+          />
         ) : canvas ? (
           <button
             type="button"
@@ -99,12 +109,14 @@ function CropOverlay({
   canvas,
   crop,
   source,
+  ratio,
   onInput,
   onCommit,
 }: {
   canvas: Rect;
   crop: NormRect;
   source: { width: number; height: number };
+  ratio: number | null;
   onInput: (crop: NormRect) => void;
   onCommit: () => void;
 }) {
@@ -123,7 +135,9 @@ function CropOverlay({
   const move = (e: ReactPointerEvent<HTMLElement>) => {
     const s = start.current;
     if (!s) return;
-    onInput(dragCrop(s.crop, s.edge, (e.clientX - s.x) / canvas.w, (e.clientY - s.y) / canvas.h));
+    const dx = (e.clientX - s.x) / canvas.w;
+    const dy = (e.clientY - s.y) / canvas.h;
+    onInput(ratio ? dragCropLocked(s.crop, s.edge, dx, dy, ratio) : dragCrop(s.crop, s.edge, dx, dy));
   };
   const up = () => {
     if (!start.current) return;

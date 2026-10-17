@@ -1,10 +1,18 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ipc, message, type Leftover, type RecordKind, type TakeInfo } from "../lib/ipc";
-import { loadRecordOptions, saveRecordOptions, type RecordOptions } from "../lib/settings";
+import { usePermissions } from "../lib/permissions";
+import {
+  loadOnboarded,
+  loadRecordOptions,
+  saveOnboarded,
+  saveRecordOptions,
+  type RecordOptions,
+} from "../lib/settings";
+import { Onboarding } from "./Onboarding";
 import { Kbd, PrimaryButton, SecondaryButton, Shimmer, Switch } from "./ui/controls";
-import { Back, Camera, Close, Folder, Forward, Mic, Resume, Screen, Selection, WindowIcon } from "./ui/icons";
-import { Modal } from "./ui/overlays";
+import { Back, Camera, Close, Folder, Forward, Mic, Resume, Screen, Selection, Shield, WindowIcon } from "./ui/icons";
+import { Modal, Tooltip } from "./ui/overlays";
 
 const KINDS: { kind: RecordKind; label: string; icon: ReactNode }[] = [
   { kind: "screen", label: "Record screen", icon: <Screen size={16} /> },
@@ -70,8 +78,11 @@ export function Launcher({
   const [leftover, setLeftover] = useState<Leftover | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
+  const { permissions, request } = usePermissions();
 
   useEffect(() => {
+    void loadOnboarded().then((seen) => setOnboarding(!seen));
     void loadRecordOptions().then(setOptions);
     void ipc.leftoverTake().then(setLeftover).catch(() => setLeftover(null));
   }, []);
@@ -87,6 +98,20 @@ export function Launcher({
     setOptions(next);
     void saveRecordOptions(next);
   };
+
+  /** Turning on the mic or camera asks for it then, if it was never asked. */
+  const toggle = async (what: "mic" | "camera", on: boolean) => {
+    if (on && permissions?.[what] === "notAsked") await request(what);
+    setOption({ ...options, [what]: on });
+  };
+
+  const finishOnboarding = () => {
+    void saveOnboarded();
+    setOnboarding(false);
+  };
+
+  const needsScreen = kind === "selection" && permissions !== null && permissions.screen !== "granted";
+  const blocked = (what: "mic" | "camera") => options[what] && permissions?.[what] === "denied";
 
   const start = useCallback(async () => {
     if (!kind || starting) return;
@@ -144,7 +169,11 @@ export function Launcher({
 
       <div className="relative min-h-0 flex-1 px-3">
         <AnimatePresence mode="popLayout" initial={false}>
-          {recording ? (
+          {onboarding && !recording ? (
+            <motion.div key="onboarding" {...step} className="flex h-full flex-col">
+              <Onboarding onDone={finishOnboarding} />
+            </motion.div>
+          ) : recording ? (
             <motion.div key="recording" {...step} className="flex h-full flex-col items-center justify-center gap-3 pb-10">
               <span className="record-pulse size-3 rounded-full bg-record" />
               <Shimmer className="text-[13px]">Recording</Shimmer>
@@ -171,24 +200,55 @@ export function Launcher({
               </div>
 
               <div className="flex flex-col">
-                <label className="flex h-10 items-center gap-3 rounded-lg px-3 text-[13px] text-content/85">
-                  <Mic size={16} className="text-content/60" />
-                  <span className="flex-1">Microphone</span>
-                  <Switch checked={options.mic} label="Microphone" onChange={(mic) => setOption({ ...options, mic })} />
-                </label>
-                <label className="flex h-10 items-center gap-3 rounded-lg px-3 text-[13px] text-content/85">
-                  <Camera size={16} className="text-content/60" />
-                  <span className="flex-1">Camera</span>
-                  <Switch
-                    checked={options.camera}
-                    label="Camera"
-                    onChange={(camera) => setOption({ ...options, camera })}
-                  />
-                </label>
+                {(["mic", "camera"] as const).map((what) => (
+                  <div key={what}>
+                    <label className="flex h-10 items-center gap-3 rounded-lg px-3 text-[13px] text-content/85">
+                      {what === "mic" ? (
+                        <Mic size={16} className="text-content/60" />
+                      ) : (
+                        <Camera size={16} className="text-content/60" />
+                      )}
+                      <span className="flex-1">{what === "mic" ? "Microphone" : "Camera"}</span>
+                      <Switch
+                        checked={options[what]}
+                        label={what === "mic" ? "Microphone" : "Camera"}
+                        onChange={(on) => void toggle(what, on)}
+                      />
+                    </label>
+                    {blocked(what) ? (
+                      <p className="-mt-1 mb-1 flex items-center gap-1.5 px-3 pl-11 text-[11.5px] text-warning">
+                        Not allowed.
+                        <button
+                          type="button"
+                          onClick={() => void ipc.openPrivacy(what)}
+                          className="underline underline-offset-2 hover:text-content"
+                        >
+                          Open Settings
+                        </button>
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
               </div>
+              {needsScreen ? (
+                <p className="mx-3 mt-2 text-[11.5px] leading-snug text-content/55">
+                  Selecting an area needs Screen recording.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setOnboarding(true)}
+                    className="text-content/80 underline underline-offset-2 hover:text-content"
+                  >
+                    Set it up
+                  </button>
+                </p>
+              ) : null}
 
               <div className="mt-auto pb-4">
-                <PrimaryButton className="h-9 w-full text-[13px]" onClick={() => void start()} disabled={starting}>
+                <PrimaryButton
+                  className="h-9 w-full text-[13px]"
+                  onClick={() => void start()}
+                  disabled={starting || needsScreen || blocked("mic") || blocked("camera")}
+                >
                   <span className="size-2 rounded-full bg-record" />
                   {kind === "selection" ? "Select area" : kind === "window" ? "Choose window" : "Record"}
                 </PrimaryButton>
@@ -201,7 +261,17 @@ export function Launcher({
             <motion.div key="home" {...step} className="flex h-full flex-col">
               <div className="mb-4 flex items-center gap-2.5 px-3">
                 <img src="/icon.svg" alt="" className="size-7" draggable={false} />
-                <h1 className="text-[15px] font-semibold tracking-tight">Clipt</h1>
+                <h1 className="flex-1 text-[15px] font-semibold tracking-tight">Clipt</h1>
+                <Tooltip label="Permissions">
+                  <button
+                    type="button"
+                    aria-label="Permissions"
+                    onClick={() => setOnboarding(true)}
+                    className="grid size-7 place-items-center rounded-md text-content/45 hover:bg-selection hover:text-content"
+                  >
+                    <Shield size={15} />
+                  </button>
+                </Tooltip>
               </div>
               {KINDS.map((k, i) => (
                 <Row

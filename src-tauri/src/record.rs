@@ -41,6 +41,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use crate::export::Rate;
+use crate::indicator::Target;
 use crate::objc::{any, dict, int, k, ns, num};
 use crate::take::Take;
 
@@ -52,6 +54,9 @@ const FPS: i32 = 60;
 /// kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
 const YUV420V: u32 = u32::from_be_bytes(*b"420v");
 const SOUND: u32 = u32::from_be_bytes(*b"soun");
+/// Takes are working files: high constant quality (~45-49 dB luma on screen
+/// text, about 20 Mbps for a Retina display; see `take_quality`).
+const TAKE_QUALITY: f64 = 0.85;
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -97,7 +102,7 @@ impl Track {
         codec: &NSString,
         width: f64,
         height: f64,
-        bitrate: i64,
+        rate: Rate,
         audio: bool,
     ) -> Result<Track> {
         let _ = std::fs::remove_file(path);
@@ -108,11 +113,9 @@ impl Track {
                 k!(objc2_av_foundation::AVFileTypeQuickTimeMovie),
             )
             .map_err(|e| anyhow!(e.localizedDescription().to_string()))?;
+            let (rate_key, rate_value) = rate.setting();
             let compression = dict(&[
-                (
-                    k!(objc2_av_foundation::AVVideoAverageBitRateKey),
-                    any(&*int(bitrate)),
-                ),
+                (rate_key, any(&*rate_value)),
                 (
                     k!(objc2_av_foundation::AVVideoExpectedSourceFrameRateKey),
                     any(&*int(FPS as i64)),
@@ -803,16 +806,6 @@ fn finish_selection(area: Option<Area>) {
     }
 }
 
-fn display_id(screen: &NSScreen) -> u32 {
-    let key = ns("NSScreenNumber");
-    screen
-        .deviceDescription()
-        .objectForKey(&key)
-        .and_then(|v| v.downcast::<NSNumber>().ok())
-        .map(|n| n.unsignedIntValue())
-        .unwrap_or(0)
-}
-
 /// Covers every screen with a dimmed overlay and waits for a dragged area.
 fn select_area(app: &AppHandle) -> Result<Option<Area>> {
     let (tx, rx) = mpsc::channel();
@@ -843,7 +836,7 @@ fn select_area(app: &AppHandle) -> Result<Option<Area>> {
             let view = SelectView::alloc(mtm).set_ivars(SelectIvars {
                 start: Cell::new(None),
                 current: Cell::new(None),
-                display: display_id(&screen),
+                display: crate::indicator::display_id(&screen),
                 scale: screen.backingScaleFactor(),
             });
             let bounds = NSRect::new(NSPoint::new(0.0, 0.0), frame.size);
@@ -896,7 +889,6 @@ fn shareable_content() -> Result<Retained<SCShareableContent>> {
 /// A filter for part of a display, leaving out Clipt's own windows.
 fn area_filter(area: Area) -> Result<Retained<SCContentFilter>> {
     if !objc2_core_graphics::CGPreflightScreenCaptureAccess() {
-        objc2_core_graphics::CGRequestScreenCaptureAccess();
         bail!("Allow Clipt in System Settings, Privacy & Security, Screen & System Audio Recording, then reopen Clipt.");
     }
     let content = shareable_content()?;
@@ -932,25 +924,91 @@ fn area_filter(area: Area) -> Result<Retained<SCContentFilter>> {
 // ---------------------------------------------------------------------------
 // Mic and camera
 
-fn ask_access(kind: &AVMediaType, what: &str) -> Result<()> {
-    // SAFETY: Plain AVFoundation calls.
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum Access {
+    Granted,
+    Denied,
+    NotAsked,
+}
+
+/// What Clipt may use. Shown and asked for during onboarding, never in the
+/// middle of starting a recording.
+#[derive(Serialize, Clone, Copy, Debug)]
+pub struct Permissions {
+    pub screen: Access,
+    pub mic: Access,
+    pub camera: Access,
+}
+
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum Permission {
+    Screen,
+    Mic,
+    Camera,
+}
+
+fn device_access(kind: &AVMediaType) -> Access {
+    // SAFETY: Plain AVFoundation call.
     let status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(kind) };
     if status == AVAuthorizationStatus::Authorized {
-        return Ok(());
+        Access::Granted
+    } else if status == AVAuthorizationStatus::NotDetermined {
+        Access::NotAsked
+    } else {
+        Access::Denied
     }
-    if status == AVAuthorizationStatus::NotDetermined {
-        let granted = crate::objc::wait(Duration::from_secs(120), |tx| {
-            let block = block2::RcBlock::new(move |ok: Bool| {
-                let _ = tx.send(ok.as_bool());
-            });
-            // SAFETY: The handler is called once.
-            unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(kind, &block) };
-        });
-        if granted == Some(true) {
-            return Ok(());
+}
+
+/// Whether Clipt was ever refused Screen Recording can't be read; macOS only
+/// says whether it's granted (and only after a relaunch).
+pub fn permissions() -> Permissions {
+    Permissions {
+        screen: if objc2_core_graphics::CGPreflightScreenCaptureAccess() {
+            Access::Granted
+        } else {
+            Access::NotAsked
+        },
+        mic: device_access(k!(objc2_av_foundation::AVMediaTypeAudio)),
+        camera: device_access(k!(objc2_av_foundation::AVMediaTypeVideo)),
+    }
+}
+
+/// Shows the system prompt for `what` (once; later it's System Settings).
+pub fn request(what: Permission) -> Permissions {
+    match what {
+        Permission::Screen => {
+            objc2_core_graphics::CGRequestScreenCaptureAccess();
+        }
+        Permission::Mic | Permission::Camera => {
+            let kind = if what == Permission::Mic {
+                k!(objc2_av_foundation::AVMediaTypeAudio)
+            } else {
+                k!(objc2_av_foundation::AVMediaTypeVideo)
+            };
+            if device_access(kind) == Access::NotAsked {
+                crate::objc::wait(Duration::from_secs(300), |tx| {
+                    let block = block2::RcBlock::new(move |ok: Bool| {
+                        let _ = tx.send(ok.as_bool());
+                    });
+                    // SAFETY: The handler is called once.
+                    unsafe {
+                        AVCaptureDevice::requestAccessForMediaType_completionHandler(kind, &block)
+                    };
+                });
+            }
         }
     }
-    bail!("Clipt can't use the {what}. Allow it in System Settings, Privacy & Security.")
+    permissions()
+}
+
+/// Recording never prompts: anything not granted was settled in onboarding.
+fn require(granted: Access, what: &str) -> Result<()> {
+    if granted == Access::Granted {
+        return Ok(());
+    }
+    bail!("Clipt can't use the {what}. Turn it on in Permissions, or in System Settings, Privacy & Security.")
 }
 
 struct Capture {
@@ -1070,10 +1128,16 @@ fn begin(
     camera: bool,
 ) -> Result<bool> {
     if mic {
-        ask_access(k!(objc2_av_foundation::AVMediaTypeAudio), "microphone")?;
+        require(
+            device_access(k!(objc2_av_foundation::AVMediaTypeAudio)),
+            "microphone",
+        )?;
     }
     if camera {
-        ask_access(k!(objc2_av_foundation::AVMediaTypeVideo), "camera")?;
+        require(
+            device_access(k!(objc2_av_foundation::AVMediaTypeVideo)),
+            "camera",
+        )?;
     }
 
     // Get Clipt out of the way while choosing and recording.
@@ -1084,16 +1148,26 @@ fn begin(
         }
     });
 
-    let (filter, source) = match kind {
+    let (filter, source, target) = match kind {
         Kind::Selection => match select_area(app)? {
-            Some(area) => (area_filter(area)?, Some(area.rect)),
+            Some(area) => (
+                area_filter(area)?,
+                Some(area.rect),
+                Some(Target::Area {
+                    display: area.display,
+                    rect: area.rect,
+                }),
+            ),
             None => {
                 crate::show_main(app);
                 return Ok(false);
             }
         },
         Kind::Screen | Kind::Window => match pick(app, kind)? {
-            Some(filter) => (filter, None),
+            Some(filter) => {
+                let target = picked_target(&filter);
+                (filter, None, target)
+            }
             None => {
                 crate::show_main(app);
                 return Ok(false);
@@ -1103,13 +1177,41 @@ fn begin(
     let used_picker = source.is_none();
 
     match record(app, data_dir, filter, source, mic, camera, used_picker) {
-        Ok(()) => Ok(true),
+        Ok(()) => {
+            if let Some(target) = target {
+                let _ = on_main(app, move |_| crate::indicator::show(target));
+            }
+            Ok(true)
+        }
         Err(e) => {
             if used_picker {
                 deactivate_picker(app);
             }
             crate::show_main(app);
             Err(e)
+        }
+    }
+}
+
+/// What the system picker chose, for the indicator. Needs macOS 15.2; older
+/// systems simply don't dim.
+fn picked_target(filter: &SCContentFilter) -> Option<Target> {
+    // SAFETY: Selectors are checked before they're sent.
+    unsafe {
+        let has: bool = msg_send![filter, respondsToSelector: objc2::sel!(includedWindows)];
+        if !has {
+            return None;
+        }
+        if filter.style() == SCShareableContentStyle::Window {
+            filter
+                .includedWindows()
+                .firstObject()
+                .map(|w| Target::Window(w.windowID()))
+        } else {
+            filter
+                .includedDisplays()
+                .firstObject()
+                .map(|d| Target::Display(d.displayID()))
         }
     }
 }
@@ -1147,13 +1249,12 @@ fn record(
         config.setCapturesAudio(false);
 
         let take = Take::for_recording(data_dir, camera)?;
-        let bitrate = (w * h * FPS as f64 * 0.1) as i64;
         let screen = Track::new(
             &take.screen_path(),
             k!(objc2_av_foundation::AVVideoCodecTypeHEVC),
             w,
             h,
-            bitrate,
+            Rate::Quality(TAKE_QUALITY),
             mic,
         )?;
 
@@ -1179,7 +1280,7 @@ fn record(
                     k!(objc2_av_foundation::AVVideoCodecTypeH264),
                     cw,
                     ch,
-                    6_000_000,
+                    Rate::Bitrate(6_000_000),
                     false,
                 )?;
                 *shared.camera.lock().unwrap_or_else(|e| e.into_inner()) = Some(Send(track));
@@ -1268,6 +1369,7 @@ pub fn stop(app: &AppHandle) {
         return;
     };
     session.shared.stopping.store(true, Ordering::SeqCst);
+    let _ = on_main(app, |_| crate::indicator::hide());
     let _ = app.global_shortcut().unregister(STOP_SHORTCUT);
     crate::tray::set_recording(app, false);
 
@@ -1359,6 +1461,16 @@ mod tests {
         h: usize,
         shade: u8,
     ) -> objc2_core_foundation::CFRetained<CMSampleBuffer> {
+        painted(pts, w, h, &|_, _| [shade; 3])
+    }
+
+    /// Like `frame`, painting each pixel.
+    fn painted(
+        pts: f64,
+        w: usize,
+        h: usize,
+        paint: &dyn Fn(usize, usize) -> [u8; 3],
+    ) -> objc2_core_foundation::CFRetained<CMSampleBuffer> {
         use objc2_core_video::{
             CVPixelBuffer, CVPixelBufferCreate, CVPixelBufferGetBaseAddress,
             CVPixelBufferGetDataSize, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags,
@@ -1379,7 +1491,15 @@ mod tests {
             let buffer = objc2_core_foundation::CFRetained::from_raw(NonNull::new(buffer).unwrap());
             CVPixelBufferLockBaseAddress(&buffer, CVPixelBufferLockFlags(0));
             let base = CVPixelBufferGetBaseAddress(&buffer) as *mut u8;
-            std::ptr::write_bytes(base, shade, CVPixelBufferGetDataSize(&buffer));
+            let row = objc2_core_video::CVPixelBufferGetBytesPerRow(&buffer);
+            let _ = CVPixelBufferGetDataSize(&buffer);
+            for y in 0..h {
+                let line = std::slice::from_raw_parts_mut(base.add(y * row), w * 4);
+                for x in 0..w {
+                    let [r, g, b] = paint(x, y);
+                    line[x * 4..x * 4 + 4].copy_from_slice(&[b, g, r, 255]);
+                }
+            }
             CVPixelBufferUnlockBaseAddress(&buffer, CVPixelBufferLockFlags(0));
             let mut format: *const objc2_core_media::CMVideoFormatDescription = null();
             objc2_core_media::CMVideoFormatDescriptionCreateForImageBuffer(
@@ -1418,8 +1538,24 @@ mod tests {
         let camera_path = dir.join("camera.mov");
         let hevc = k!(objc2_av_foundation::AVVideoCodecTypeHEVC);
         let h264 = k!(objc2_av_foundation::AVVideoCodecTypeH264);
-        let mut screen = Track::new(&screen_path, hevc, 640.0, 400.0, 8_000_000, false).unwrap();
-        let mut camera = Track::new(&camera_path, h264, 320.0, 240.0, 2_000_000, false).unwrap();
+        let mut screen = Track::new(
+            &screen_path,
+            hevc,
+            640.0,
+            400.0,
+            Rate::Quality(TAKE_QUALITY),
+            false,
+        )
+        .unwrap();
+        let mut camera = Track::new(
+            &camera_path,
+            h264,
+            320.0,
+            240.0,
+            Rate::Bitrate(2_000_000),
+            false,
+        )
+        .unwrap();
 
         // Host time is large and arbitrary; the take starts at the first frame.
         let t0 = 5000.0;
@@ -1462,6 +1598,118 @@ mod tests {
             start.is_some_and(|s| (s - 0.25).abs() < 0.03),
             "camera starts at {start:?}"
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Thin text strokes scrolling by `n / 2` pixels per frame.
+    fn text_px(x: usize, y: usize, n: usize) -> [u8; 3] {
+        let y = y + n / 2;
+        let (cx, cy, glyph, line) = (x % 14, y % 28, x / 14, y / 28);
+        if (glyph + line * 7) % 9 == 0 || !(6..22).contains(&cy) {
+            return [22, 23, 26];
+        }
+        let seed = (glyph * 2654435761 + line * 40503) % 997;
+        let on = match seed % 4 {
+            0 => cx == 3 || cx == 4 || cy == 13,
+            1 => cx == 2 + (cy - 6) / 3 || cy == 21,
+            2 => cx == 9 || cy == 6 || (cy == 14 && cx < 10),
+            _ => (cx as isize - 6).abs() + (cy as isize - 14).abs() / 2 == 4,
+        };
+        if on {
+            [232, 232, 236]
+        } else {
+            [22, 23, 26]
+        }
+    }
+
+    /// How much the recorded take loses on screen text:
+    /// `cargo test --release --lib take_quality -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn take_quality() {
+        let dir = std::env::temp_dir().join(format!("clipt-takeq-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (w, h) = (2880usize, 1800usize);
+        for scroll in [true, false] {
+            let path = dir.join("take.mov");
+            let hevc = k!(objc2_av_foundation::AVVideoCodecTypeHEVC);
+            let mut track = Track::new(
+                &path,
+                hevc,
+                w as f64,
+                h as f64,
+                Rate::Quality(TAKE_QUALITY),
+                false,
+            )
+            .unwrap();
+            let t0 = 100.0;
+            let step = |n: usize| if scroll { n } else { 0 };
+            let start = std::time::Instant::now();
+            for n in 0..60 {
+                let t = t0 + n as f64 / 60.0;
+                let s = painted(t, w, h, &|x, y| text_px(x, y, step(n)));
+                // Keep a real-time pace, as a recording would.
+                while start.elapsed().as_secs_f64() < n as f64 / 60.0 {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                track.append_video(&s, crate::objc::time(t0));
+            }
+            assert!(track.finish(crate::objc::time(t0 + 1.0)));
+            let size = std::fs::metadata(&path).unwrap().len();
+
+            // Decode frame 30 and compare with what was drawn.
+            let asset = crate::media::open_asset(&path);
+            let video = crate::media::tracks(&asset, k!(objc2_av_foundation::AVMediaTypeVideo))
+                .unwrap()
+                .remove(0);
+            // SAFETY: Plain AVFoundation reading.
+            unsafe {
+                let reader =
+                    objc2_av_foundation::AVAssetReader::assetReaderWithAsset_error(&asset).unwrap();
+                let settings = dict(&[(
+                    &*ns("PixelFormatType"),
+                    any(&*NSNumber::new_u32(crate::render::BGRA)),
+                )]);
+                let out = objc2_av_foundation::AVAssetReaderTrackOutput::assetReaderTrackOutputWithTrack_outputSettings(&video, Some(&settings));
+                reader.addOutput(&out);
+                assert!(reader.startReading());
+                let mut n = 0;
+                let mut se = 0f64;
+                while let Some(sample) = out.copyNextSampleBuffer() {
+                    if n == 30 {
+                        let buf = sample.image_buffer().unwrap();
+                        objc2_core_video::CVPixelBufferLockBaseAddress(
+                            &buf,
+                            objc2_core_video::CVPixelBufferLockFlags(1),
+                        );
+                        let base = objc2_core_video::CVPixelBufferGetBaseAddress(&buf) as *const u8;
+                        let row = objc2_core_video::CVPixelBufferGetBytesPerRow(&buf);
+                        for y in 0..h {
+                            for x in 0..w {
+                                let p = base.add(y * row + x * 4);
+                                let got = 0.2126 * *p.add(2) as f64
+                                    + 0.7152 * *p.add(1) as f64
+                                    + 0.0722 * *p as f64;
+                                let [r, g, b] = text_px(x, y, step(30));
+                                let want =
+                                    0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64;
+                                se += (got - want).powi(2);
+                            }
+                        }
+                        objc2_core_video::CVPixelBufferUnlockBaseAddress(
+                            &buf,
+                            objc2_core_video::CVPixelBufferLockFlags(1),
+                        );
+                    }
+                    n += 1;
+                }
+                let psnr = 10.0 * (255.0f64.powi(2) / (se / (w * h) as f64)).log10();
+                println!(
+                    "take scroll={scroll}: {n} frames, luma PSNR {psnr:.2} dB, {:.1} Mbps",
+                    size as f64 * 8.0 / 1e6
+                );
+            }
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

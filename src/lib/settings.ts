@@ -35,6 +35,40 @@ export async function saveLook(look: Look): Promise<void> {
   }
 }
 
+/** Whether the permissions step has been seen. */
+export async function loadOnboarded(): Promise<boolean> {
+  try {
+    return (await (await settings()).get<boolean>("onboarded")) ?? false;
+  } catch {
+    return false;
+  }
+}
+
+export async function saveOnboarded(): Promise<void> {
+  try {
+    await (await settings()).set("onboarded", true);
+  } catch {
+    // Best effort.
+  }
+}
+
+/** The last picture used as a background, for its swatch. */
+export async function loadPicture(): Promise<string | null> {
+  try {
+    return (await (await settings()).get<string>("picture")) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function savePicture(path: string): Promise<void> {
+  try {
+    await (await settings()).set("picture", path);
+  } catch {
+    // Best effort.
+  }
+}
+
 export async function loadRecordOptions(): Promise<RecordOptions> {
   try {
     const saved = await (await settings()).get<RecordOptions>("record");

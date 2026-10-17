@@ -4,7 +4,7 @@ import { clamp, formatTime } from "../lib/geometry";
 import type { Playback } from "../lib/ipc";
 import { MIN_CLIP } from "../lib/recipe";
 import { Kbd, SPRING } from "./ui/controls";
-import { Alert, Pause, Play } from "./ui/icons";
+import { Pause, Play } from "./ui/icons";
 import { Tooltip } from "./ui/overlays";
 
 type Trim = { start: number; end: number };
@@ -15,7 +15,6 @@ export function Timeline({
   trim,
   playback,
   thumbs,
-  tooLong,
   onTrimInput,
   onTrimCommit,
   onSeek,
@@ -25,7 +24,6 @@ export function Timeline({
   trim: Trim;
   playback: Playback;
   thumbs: string[];
-  tooLong: boolean;
   onTrimInput: (trim: Trim) => void;
   onTrimCommit: () => void;
   onSeek: (t: number) => void;
@@ -102,15 +100,7 @@ export function Timeline({
         <span className="hidden items-center gap-1 text-[11px] text-content/35 md:flex">
           <Kbd>I</Kbd> <Kbd>O</Kbd> set trim
         </span>
-        <div className="ml-auto flex items-center gap-2">
-          {tooLong ? (
-            <span className="flex items-center gap-1 text-[11.5px] text-warning" title="X takes videos up to 2:20">
-              <Alert size={13} />
-              Longer than 2:20
-            </span>
-          ) : null}
-          <span className="text-content/50 tabular">{formatTime(length)}</span>
-        </div>
+        <span className="ml-auto text-content/50 tabular">{formatTime(length)}</span>
       </div>
 
       <div

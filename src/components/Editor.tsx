@@ -1,27 +1,26 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { clamp, formatTime } from "../lib/geometry";
+import { clamp, fitRatio, formatTime, FULL, normRatio, type CropRatio } from "../lib/geometry";
 import { history, useHistory } from "../lib/history";
 import { useLatest } from "../lib/hooks";
 import { ipc, message, on, type Playback, type TakeInfo } from "../lib/ipc";
+import { addPicture } from "../lib/pictures";
 import { lookOf, MIN_CLIP, type Recipe, type Scene } from "../lib/recipe";
 import { saveLook } from "../lib/settings";
 import { Inspector } from "./Inspector";
 import { Preview } from "./Preview";
 import { Timeline } from "./Timeline";
 import { PrimaryButton, Shimmer } from "./ui/controls";
-import { Alert, Check, Plus, Redo, Undo } from "./ui/icons";
+import { Alert, Check, Folder, Plus, Redo, Undo } from "./ui/icons";
 import { Tooltip } from "./ui/overlays";
 
-/** X rejects videos longer than this. */
-const X_MAX = 140;
 
 type ExportState =
   | { phase: "idle" }
   | { phase: "running"; progress: number }
   | { phase: "done"; name: string }
-  | { phase: "failed"; message: string };
+  | { phase: "failed"; message: string; label?: string };
 
 function typing(target: EventTarget | null): boolean {
   return (
@@ -66,6 +65,7 @@ export function Editor({ take, onNew }: { take: TakeInfo; onNew: () => void }) {
   const recipe = h.present;
   const gesture = h.base !== null;
   const [cropping, setCropping] = useState(false);
+  const [cropRatio, setCropRatio] = useState<CropRatio>("free");
   const scene = useScene(recipe, cropping, gesture);
   const [playback, setPlayback] = useState<Playback>({ time: recipe?.trim.start ?? 0, playing: false });
   const [thumbs, setThumbs] = useState<string[]>([]);
@@ -119,6 +119,21 @@ export function Editor({ take, onNew }: { take: TakeInfo; onNew: () => void }) {
     return () => window.clearTimeout(timer);
   }, [exp.phase]);
 
+  // A picture dropped on the window becomes the background.
+  useEffect(() => {
+    const use = (e: Event) => {
+      const path = (e as CustomEvent<string>).detail;
+      void addPicture(path)
+        .then((stored) => {
+          const r = recipeRef.current;
+          if (r) apply({ ...r, style: { ...r.style, background: { kind: "image", path: stored } } });
+        })
+        .catch((err) => setExp({ phase: "failed", message: message(err), label: "Couldn't use that picture" }));
+    };
+    window.addEventListener("clipt:picture", use);
+    return () => window.removeEventListener("clipt:picture", use);
+  }, [apply, recipeRef]);
+
   useEffect(() => {
     const run = () => {
       if (exp.phase !== "running") void startExport();
@@ -169,7 +184,6 @@ export function Editor({ take, onNew }: { take: TakeInfo; onNew: () => void }) {
   }, [apply, cropping, take.duration, playRef, recipeRef]);
 
   if (!recipe) return null;
-  const length = recipe.trim.end - recipe.trim.start;
 
   return (
     <div className="flex h-full">
@@ -183,6 +197,16 @@ export function Editor({ take, onNew }: { take: TakeInfo; onNew: () => void }) {
               className="grid size-7 place-items-center rounded-md text-content/55 hover:bg-selection hover:text-content"
             >
               <Plus size={15} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Open recordings" keys={["⌘", "⇧", "O"]}>
+            <button
+              type="button"
+              aria-label="Open recordings"
+              onClick={() => void ipc.openRecordings()}
+              className="grid size-7 place-items-center rounded-md text-content/55 hover:bg-selection hover:text-content"
+            >
+              <Folder size={15} />
             </button>
           </Tooltip>
           <div
@@ -223,6 +247,7 @@ export function Editor({ take, onNew }: { take: TakeInfo; onNew: () => void }) {
           cropping={cropping}
           crop={recipe.crop}
           source={{ width: take.width, height: take.height }}
+          ratio={normRatio(cropRatio, take.width, take.height)}
           onCropInput={(crop) => history.preview({ ...recipe, crop })}
           onCropCommit={() => history.commit()}
           onTogglePlay={() => void ipc.togglePlay()}
@@ -233,7 +258,6 @@ export function Editor({ take, onNew }: { take: TakeInfo; onNew: () => void }) {
           trim={recipe.trim}
           playback={playback}
           thumbs={thumbs}
-          tooLong={length > X_MAX}
           onTrimInput={(trim) => history.preview({ ...recipe, trim })}
           onTrimCommit={() => history.commit()}
           onSeek={(t) => {
@@ -279,7 +303,7 @@ export function Editor({ take, onNew }: { take: TakeInfo; onNew: () => void }) {
                 className="flex min-w-0 items-center gap-1.5 text-[12px] text-warning"
               >
                 <Alert size={14} className="shrink-0" />
-                <span className="truncate">Export failed</span>
+                <span className="truncate">{exp.label ?? "Export failed"}</span>
               </motion.span>
             ) : null}
           </AnimatePresence>
@@ -295,6 +319,12 @@ export function Editor({ take, onNew }: { take: TakeInfo; onNew: () => void }) {
           recipe={recipe}
           hasCamera={take.hasCamera}
           cropping={cropping}
+          cropRatio={cropRatio}
+          onCropRatio={(ratio) => {
+            setCropRatio(ratio);
+            const rn = normRatio(ratio, take.width, take.height);
+            if (rn) apply({ ...recipe, crop: fitRatio(recipe.crop ?? FULL, rn) });
+          }}
           onApply={apply}
           onInput={(r) => history.preview(r)}
           onCommit={() => history.commit()}

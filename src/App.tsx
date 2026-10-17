@@ -8,6 +8,7 @@ import { Modal } from "./components/ui/overlays";
 import { history } from "./lib/history";
 import { useLatest } from "./lib/hooks";
 import { ipc, message, on, type TakeInfo } from "./lib/ipc";
+import { PICTURE } from "./lib/pictures";
 import { freshRecipe, type Recipe } from "./lib/recipe";
 import { loadLook } from "./lib/settings";
 
@@ -34,7 +35,7 @@ export function App() {
   const reduce = useReducedMotion();
   const [take, setTake] = useState<TakeInfo | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const [dragging, setDragging] = useState<"video" | "picture" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const takeRef = useLatest(take);
@@ -99,12 +100,22 @@ export function App() {
     void getCurrentWebview()
       .onDragDropEvent((event) => {
         const p = event.payload;
-        if (p.type === "enter") setDragging(p.paths.some((x) => VIDEO.test(x)));
-        else if (p.type === "leave") setDragging(false);
+        if (p.type === "enter") {
+          setDragging(
+            p.paths.some((x) => VIDEO.test(x))
+              ? "video"
+              : takeRef.current && p.paths.some((x) => PICTURE.test(x))
+                ? "picture"
+                : null,
+          );
+        } else if (p.type === "leave") setDragging(null);
         else if (p.type === "drop") {
-          setDragging(false);
+          setDragging(null);
           const video = p.paths.find((x) => VIDEO.test(x));
+          const picture = p.paths.find((x) => PICTURE.test(x));
           if (video) importPath(video);
+          else if (picture && takeRef.current)
+            window.dispatchEvent(new CustomEvent("clipt:picture", { detail: picture }));
           else if (p.paths.length) setNotice("Clipt opens .mov and .mp4 files");
         }
       })
@@ -113,7 +124,7 @@ export function App() {
       gone = true;
       unlisten?.();
     };
-  }, [importPath]);
+  }, [importPath, takeRef]);
 
   const newRecording = useCallback(() => {
     if (recording) return;
@@ -198,7 +209,9 @@ export function App() {
             exit={{ opacity: 0 }}
             transition={{ duration: reduce ? 0 : 0.15 }}
           >
-            <span className="text-[13px] font-medium text-content">Drop to edit</span>
+            <span className="text-[13px] font-medium text-content">
+              {dragging === "picture" ? "Drop to use as background" : "Drop to edit"}
+            </span>
           </motion.div>
         ) : null}
       </AnimatePresence>

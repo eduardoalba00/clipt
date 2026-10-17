@@ -1,13 +1,14 @@
 /** Mirrors `src-tauri/src/scene.rs`. The recipe is what the user chose; the
  * scene is what Rust laid out from it. */
 
-export type Aspect = "auto" | "16:9" | "1:1" | "4:5";
+export type Aspect = "auto" | "16:9" | "4:3" | "1:1" | "4:5";
 export type Fps = 30 | 60;
 export type Corner = "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
 
 export type Background =
   | { kind: "preset"; id: string }
-  | { kind: "solid"; color: string };
+  | { kind: "solid"; color: string }
+  | { kind: "image"; path: string };
 
 export type NormRect = { x: number; y: number; w: number; h: number };
 
