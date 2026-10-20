@@ -20,3 +20,7 @@ All notable changes to Clipt are recorded here. The format follows
 - Constant-quality H.264 export up to 1080p at 30 or 60 fps, revealed in
   Finder and copied to the clipboard.
 - Import of .mov and .mp4 files by drag and drop.
+- Signed, notarized universal builds, and automatic updates: Clipt checks
+  for a new version at launch and every few hours, and from Check for
+  Updates… in the Clipt and menu bar menus. It never restarts during a
+  recording or an export.

@@ -4,3 +4,10 @@ src-tauri/target
 src-tauri/gen
 .DS_Store
 *.log
+
+# Signing keys never belong in the repository.
+*.p8
+*.p12
+*.pem
+*.key
+*.sig

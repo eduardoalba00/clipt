@@ -65,6 +65,10 @@ code signature. For a permission that survives rebuilds, run
   you change the `Scene` or an IPC call, keep `site/src/backend` in step; see
   [site/README.md](site/README.md).
 
+## Releases
+
+Maintainers cut releases; [RELEASING.md](RELEASING.md) has the steps.
+
 ## Code of Conduct
 
 By taking part you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).

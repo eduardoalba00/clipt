@@ -55,5 +55,12 @@
       "entitlements": "Entitlements.plist",
       "infoPlist": "Info.plist"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3MDIzREE4Njg2OUM4RDkKUldUWnlHbG9xRDBDOTE1aWR3eVJvbWNwdzd2VDJJenZwdGtDSXBFbGIyalVKRE5RSHduSkRmTkgK",
+      "endpoints": ["https://github.com/eduardoalba00/clipt/releases/latest/download/latest.json"],
+      "requireSignedVersion": true
+    }
   }
 }

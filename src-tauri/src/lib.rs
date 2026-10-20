@@ -15,6 +15,7 @@ pub mod render;
 pub mod scene;
 pub mod take;
 mod tray;
+mod updates;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -162,6 +163,17 @@ fn open_privacy(what: record::Permission) {
         record::Permission::Mic => "Privacy_Microphone",
         record::Permission::Camera => "Privacy_Camera",
     });
+}
+
+/// What would be lost by restarting right now, if anything.
+pub(crate) fn busy(app: &AppHandle) -> Option<&'static str> {
+    if record::is_recording() {
+        Some("Finish recording first.")
+    } else if app.state::<AppState>().exporting.load(Ordering::SeqCst) {
+        Some("Wait for the export to finish.")
+    } else {
+        None
+    }
 }
 
 /// macOS applies a new Screen Recording grant only to a fresh process.
@@ -490,6 +502,7 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         &[
             &PredefinedMenuItem::about(app, Some("About Clipt"), None)?,
+            &MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?,
             &sep()?,
             &PredefinedMenuItem::hide(app, None)?,
             &PredefinedMenuItem::hide_others(app, None)?,
@@ -548,10 +561,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .menu(menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "quit" => request_quit(app),
+            "updates" => updates::check_now(app),
             "recordings" => {
                 let _ = open_recordings(app.clone());
             }
@@ -567,6 +582,7 @@ pub fn run() {
                 let _ = window.center();
             }
             tray::install(&handle)?;
+            updates::start(&handle);
             Ok(())
         })
         .on_window_event(|window, event| {

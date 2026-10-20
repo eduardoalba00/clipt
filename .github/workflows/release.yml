@@ -1,0 +1,156 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds a universal Clipt, signs and notarizes it,
+# and drafts a GitHub release with the disk image and the updater files.
+# Publishing the draft is what ships it: the app's updater reads
+# releases/latest, which skips drafts.
+#
+# Running the workflow by hand does the same build and uploads the files as a
+# short-lived workflow artifact instead of drafting a release.
+#
+# The signing secrets live in the `release` environment, which only runs for
+# `main` and `v*` tags. See RELEASING.md.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: macos-15
+    environment: release
+    permissions:
+      contents: write
+    env:
+      TARGET: universal-apple-darwin
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Only GitHub's own actions run in this job, since it handles the keys.
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - run: npm ci
+
+      - name: Check the version
+        id: version
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          crate=$(sed -nE 's/^version = "(.*)"$/\1/p' src-tauri/Cargo.toml | head -1)
+          package=$(node -p "require('./package.json').version")
+          if [ "$version" != "$crate" ] || [ "$version" != "$package" ]; then
+            echo "::error::Versions differ: tauri.conf.json $version, Cargo.toml $crate, package.json $package"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Write the App Store Connect key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$key"
+          chmod 600 "$key"
+          echo "APPLE_API_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      # Tauri imports the certificate into a throwaway keychain, signs,
+      # notarizes and staples the app, then signs the updater archive.
+      - name: Build, sign and notarize
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --target "$TARGET" --config src-tauri/tauri.release.conf.json
+
+      # Tauri notarizes the app inside the disk image but not the image itself.
+      - name: Notarize the disk image
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          bundle="src-tauri/target/$TARGET/release/bundle"
+          dmg=$(ls "$bundle"/dmg/*.dmg)
+          auth=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
+          result=$(xcrun notarytool submit "$dmg" "${auth[@]}" --wait --output-format json)
+          if [ "$(jq -r .status <<<"$result")" != Accepted ]; then
+            echo "$result"
+            xcrun notarytool log "$(jq -r .id <<<"$result")" "${auth[@]}" || true
+            exit 1
+          fi
+          xcrun stapler staple "$dmg"
+          spctl -a -vv "$bundle/macos/Clipt.app"
+          spctl -a -vv -t open --context context:primary-signature "$dmg"
+
+      - name: Collect the release files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          bundle="src-tauri/target/$TARGET/release/bundle"
+          mkdir out
+          cp "$bundle"/dmg/*.dmg "out/Clipt_${VERSION}_universal.dmg"
+          cp "$bundle/macos/Clipt.app.tar.gz" "out/Clipt_${VERSION}_universal.app.tar.gz"
+
+          # This version's section of the changelog becomes the release notes.
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::warning::CHANGELOG.md has no section for $VERSION"
+            echo "See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md)." > notes.md
+          fi
+
+          # The updater manifest. One universal archive serves both architectures.
+          SIGNATURE=$(cat "$bundle/macos/Clipt.app.tar.gz.sig") \
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/v${VERSION}/Clipt_${VERSION}_universal.app.tar.gz" \
+          node -e '
+            const fs = require("fs");
+            const target = { signature: process.env.SIGNATURE, url: process.env.URL };
+            fs.writeFileSync("out/latest.json", JSON.stringify({
+              version: process.env.VERSION,
+              notes: fs.readFileSync("notes.md", "utf8").trim(),
+              pub_date: new Date().toISOString(),
+              platforms: { "darwin-aarch64": target, "darwin-x86_64": target },
+            }, null, 2) + "\n");
+          '
+          ls -l out
+
+      - name: Draft the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --draft --verify-tag --title "Clipt $VERSION" --notes-file notes.md
+
+      - name: Keep the files
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: clipt-${{ steps.version.outputs.version }}
+          path: out/
+          retention-days: 3

@@ -57,6 +57,13 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             &MenuItem::with_id(app, "tray-stop", "Stop recording", false, None::<&str>)?,
             &MenuItem::with_id(app, "tray-show", "Show Clipt", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(
+                app,
+                "tray-updates",
+                "Check for Updates…",
+                true,
+                None::<&str>,
+            )?,
             &MenuItem::with_id(app, "tray-quit", "Quit Clipt", true, None::<&str>)?,
         ],
     )?;
@@ -75,6 +82,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                 let _ = app.emit("menu", "stop");
             }
             "tray-show" => crate::show_main(app),
+            "tray-updates" => crate::updates::check_now(app),
             "tray-quit" => crate::request_quit(app),
             _ => {}
         })
