@@ -20,6 +20,15 @@
 </p>
 
 <p align="center">
+  <a href="https://www.producthunt.com/products/clipt-2?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-clipt-2" target="_blank" rel="noopener noreferrer">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1286172&amp;theme=dark">
+      <img alt="Clipt - Free, open source screen recording without the friction | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1286172&amp;theme=light">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
   <img src="docs/demo.gif" alt="Recording a browser window with Clipt, styling it with a background, padding and rounded corners, and exporting it" width="760">
 </p>
 
