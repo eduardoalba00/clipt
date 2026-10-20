@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo.gif" alt="Clipt's launcher: record the screen, a selection or a window, with optional microphone and camera" width="760">
+  <img src="docs/demo.gif" alt="Recording a browser window with Clipt, styling it with a background, padding and rounded corners, and exporting it" width="760">
 </p>
 
 Clipt is a lightweight screen recorder for the Mac. Press <kbd>⌘N</kbd>,
