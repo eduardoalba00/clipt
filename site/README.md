@@ -62,10 +62,12 @@ The wallpaper is `wallpaper.svg`, rendered to `public/wallpaper*.webp`.
 The site builds from the repository root, because it needs `../src`:
 
 1. Create a service from this repository and leave **Root Directory** empty.
-2. Set **Config File Path** to `/site/railway.json`. It builds
-   `site/Dockerfile` and serves the result with `server.js` (no dependencies)
-   on `$PORT`.
-3. Add the custom domain `useclipt.dev`.
+2. Add the variable `RAILWAY_DOCKERFILE_PATH` = `site/Dockerfile`. It builds
+   the site and serves it with `server.js` (no dependencies) on `$PORT`.
+3. Under **Build → Watch Paths**, add `site/**` and `src/**`, so app-only
+   changes don't redeploy the site.
+4. Set **Deploy → Healthcheck Path** to `/`.
+5. Add the custom domain `useclipt.dev`.
 
 To build the image locally:
 
