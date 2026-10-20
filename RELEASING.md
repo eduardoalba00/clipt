@@ -21,7 +21,9 @@ them.
    ```
 
 4. Wait for the Release workflow. It drafts a release with
-   `Clipt_0.2.0_universal.dmg`, the updater archive and `latest.json`.
+   `Clipt_0.2.0_universal.dmg`, the same image as `Clipt.dmg` (the README and
+   useclipt.dev link to `releases/latest/download/Clipt.dmg`), the updater
+   archive and `latest.json`.
 5. Download the disk image from the draft, open it on a Mac, and check that
    Clipt launches without a Gatekeeper warning.
 6. Publish the draft. Installed copies find the update within a few hours,

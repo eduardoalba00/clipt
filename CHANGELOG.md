@@ -6,6 +6,8 @@ All notable changes to Clipt are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-19
+
 ### Added
 
 - Record the full screen, a window, or a dragged area, with optional

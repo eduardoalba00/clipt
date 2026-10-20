@@ -1,7 +1,8 @@
 /** Things to change as Clipt ships. */
 
 /** The notarized DMG. While null, the button reads "Coming soon". */
-export const DOWNLOAD_URL: string | null = null;
+export const DOWNLOAD_URL: string | null =
+  "https://github.com/eduardoalba00/clipt/releases/latest/download/Clipt.dmg";
 
 export const GITHUB_URL = "https://github.com/eduardoalba00/clipt";
 

@@ -110,6 +110,8 @@ jobs:
           bundle="src-tauri/target/$TARGET/release/bundle"
           mkdir out
           cp "$bundle"/dmg/*.dmg "out/Clipt_${VERSION}_universal.dmg"
+          # A fixed name, so releases/latest/download/Clipt.dmg always works.
+          cp "$bundle"/dmg/*.dmg out/Clipt.dmg
           cp "$bundle/macos/Clipt.app.tar.gz" "out/Clipt_${VERSION}_universal.app.tar.gz"
 
           # This version's section of the changelog becomes the release notes.

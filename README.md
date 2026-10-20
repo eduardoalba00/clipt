@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo.gif" alt="A recording going from raw capture to a framed, styled video in Clipt" width="760">
+  <img src="docs/demo.gif" alt="Clipt's launcher: record the screen, a selection or a window, with optional microphone and camera" width="760">
 </p>
 
 Clipt is a lightweight screen recorder for the Mac. Press <kbd>⌘N</kbd>,
@@ -40,11 +40,12 @@ your Mac.
   remembers your last style and gets out of the way.
 - **Polished in seconds.** Backgrounds, padding, rounded corners, a soft
   shadow, an optional browser frame and a camera bubble, previewed live.
-- **Lightweight.** About 8 MB. Built on Apple's own ScreenCaptureKit,
+- **Lightweight.** About a 10 MB download. Built on Apple's own ScreenCaptureKit,
   AVFoundation and Core Image, with no ffmpeg and nothing running in the
   background.
-- **Private by default.** Everything happens on your Mac. Clipt never talks to
-  a server.
+- **Private by default.** Everything happens on your Mac, and your recordings
+  never leave it. The only thing Clipt asks the internet is whether there's
+  an update.
 - **Keyboard first.** Every common action has a shortcut, and the shortcuts
   are shown where you need them.
 
@@ -67,12 +68,11 @@ overwrite a file.
 
 ## Get started
 
-Clipt runs on macOS 14 (Sonoma) or later and is built and tested on Apple
-Silicon.
+Clipt runs on macOS 14 (Sonoma) or later, on Apple Silicon and Intel Macs.
 
-Prebuilt releases will be published on the
-[Releases](https://github.com/eduardoalba00/clipt/releases) page. Until then,
-build it from source; it takes a couple of minutes.
+[Download the latest release](https://github.com/eduardoalba00/clipt/releases/latest/download/Clipt.dmg),
+open it, and drag Clipt into Applications. It's signed and notarized by Apple,
+and it keeps itself up to date.
 
 The first time you open Clipt, it asks for the permissions it needs: Screen
 Recording, and the microphone and camera if you want them. You can revisit

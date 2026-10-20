@@ -1,8 +1,9 @@
 # Security
 
-Clipt runs entirely on your Mac and doesn't talk to any server, but it does
-handle screen, microphone and camera access, so security reports are taken
-seriously.
+Clipt runs entirely on your Mac. Its only network request is the update
+check, which reads the latest release from GitHub; updates install only if
+they're signed with Clipt's release key. It handles screen, microphone and
+camera access, so security reports are taken seriously.
 
 ## Reporting a vulnerability
 
