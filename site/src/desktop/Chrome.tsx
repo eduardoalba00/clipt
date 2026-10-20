@@ -4,8 +4,9 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import type { Permission } from "../../../src/lib/ipc";
 import { launch, useDesktop } from "../backend/state";
-import { dockHeight } from "../backend/layout";
-import { DOWNLOAD_URL, GITHUB_URL } from "../config";
+import { MENU_BAR } from "../backend/clip";
+import { centred, dockHeight, LAUNCHER } from "../backend/layout";
+import { DOWNLOAD_URL, GITHUB_URL, PRODUCT_HUNT } from "../config";
 import { useViewport } from "./hooks";
 import { AppleLogo, GitHubLogo } from "./glyphs";
 
@@ -64,6 +65,35 @@ export function Prompt() {
         ))}
       </div>
     </motion.div>
+  );
+}
+
+const BADGE = { w: 250, h: 54 };
+
+/** The Product Hunt badge, on the desktop in the space above the launcher.
+ * It sits under every window, so the editor and dragged windows cover it. */
+export function ProductHuntBadge() {
+  useViewport();
+  if (!PRODUCT_HUNT) return null;
+  const gap = centred(LAUNCHER).y - MENU_BAR;
+  if (gap < BADGE.h + 24) return null;
+  return (
+    <a
+      href={PRODUCT_HUNT.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="absolute left-1/2 z-[4] -translate-x-1/2 transition-opacity hover:opacity-90"
+      style={{ top: Math.round(MENU_BAR + (gap - BADGE.h) / 2) }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <img
+        src={PRODUCT_HUNT.badge}
+        alt="Clipt - Free, open source screen recording without the friction | Product Hunt"
+        width={BADGE.w}
+        height={BADGE.h}
+        draggable={false}
+      />
+    </a>
   );
 }
 

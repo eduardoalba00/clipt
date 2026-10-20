@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { seedExamples } from "../backend/clipt";
 import { setWallpaper } from "../backend/clip";
 import { desktop, useDesktop } from "../backend/state";
-import { DesktopIcon, Dock, Prompt } from "./Chrome";
+import { DesktopIcon, Dock, ProductHuntBadge, Prompt } from "./Chrome";
 import { CliptWindow } from "./CliptWindow";
 import { About, Finder, QuickLook } from "./Finder";
 import { MenuBar } from "./MenuBar";
@@ -38,6 +38,7 @@ export function Desktop() {
         onPointerDown={() => desktop.set({ active: "finder" })}
       />
       <DesktopIcon />
+      <ProductHuntBadge />
       <SampleWindow />
       <CliptWindow />
       <AnimatePresence>
