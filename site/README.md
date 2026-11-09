@@ -57,21 +57,13 @@ npm run typecheck
 
 The wallpaper is `wallpaper.svg`, rendered to `public/wallpaper*.webp`.
 
-## Deploy (Railway)
+## Deploy (Cloudflare Workers)
 
-The site builds from the repository root, because it needs `../src`:
+The `clipt` Worker serves `dist/` as static assets (`wrangler.jsonc`) and
+builds on every push to `main` that touches `site/*` or `src/*`:
 
-1. Create a service from this repository and leave **Root Directory** empty.
-2. Add the variable `RAILWAY_DOCKERFILE_PATH` = `site/Dockerfile`. It builds
-   the site and serves it with `server.js` (no dependencies) on `$PORT`.
-3. Under **Build → Watch Paths**, add `site/**` and `src/**`, so app-only
-   changes don't redeploy the site.
-4. Set **Deploy → Healthcheck Path** to `/`.
-5. Add the custom domain `useclipt.dev`.
-
-To build the image locally:
-
-```sh
-docker build -f site/Dockerfile -t clipt-site .
-docker run -p 3000:3000 clipt-site
-```
+- **Root directory:** `site`. The build still reads `../src`.
+- **Build command:** `npm run build`
+- **Deploy command:** `npx wrangler deploy`
+- **Build variable:** `NODE_VERSION` = `22`
+- **Custom domain:** `useclipt.dev`

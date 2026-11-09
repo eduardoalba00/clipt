@@ -14,8 +14,4 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
     },
   },
-  {
-    files: ["site/server.js"],
-    languageOptions: { globals: { process: "readonly", console: "readonly", URL: "readonly" } },
-  },
 );
